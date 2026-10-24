@@ -3,8 +3,41 @@ import StencilCore
 
 enum DebugStage: String, CaseIterable { case stencil = "Stencil", luminance = "Preprocessed", edges = "Edges", tones = "Tonal regions" }
 
+/// CGPaths are copied to immutable paths before crossing the worker/UI boundary.
+struct PreparedStencil: @unchecked Sendable {
+    struct Stroke { let path: CGPath; let primary: Bool }
+    let width: Int
+    let height: Int
+    let layers: [LayerKind: [Stroke]]
+}
+
 enum StencilRenderer {
+    static func prepare(_ result: StencilResult) throws -> PreparedStencil {
+        var layers: [LayerKind: [PreparedStencil.Stroke]] = [:]
+        for kind in LayerKind.allCases {
+            var strokes: [PreparedStencil.Stroke] = []
+            for contour in result.contours(for: kind) {
+                try Task.checkCancellation()
+                guard let first = contour.points.first else { continue }
+                let path = CGMutablePath(); path.move(to: CGPoint(x: first.x,y: first.y))
+                for (index,point) in contour.points.dropFirst().enumerated() {
+                    if index % 4096 == 0 { try Task.checkCancellation() }
+                    path.addLine(to: CGPoint(x: point.x,y: point.y))
+                }
+                if contour.closed { path.closeSubpath() }
+                guard let immutable = path.copy() else { throw ImportError.allocation }
+                strokes.append(PreparedStencil.Stroke(path: immutable,primary: contour.isPrimary))
+            }
+            layers[kind] = strokes
+        }
+        return PreparedStencil(width: result.width,height: result.height,layers: layers)
+    }
     static func draw(_ result: StencilResult, context: CGContext, styles: [LayerKind: LayerStyle],
+                     parameters: Parameters, strokeScale: Double, inverted: Bool) {
+        guard let prepared = try? prepare(result) else { return }
+        draw(prepared,context: context,styles: styles,parameters: parameters,strokeScale: strokeScale,inverted: inverted)
+    }
+    static func draw(_ prepared: PreparedStencil, context: CGContext, styles: [LayerKind: LayerStyle],
                      parameters: Parameters, strokeScale: Double, inverted: Bool) {
         context.setLineCap(.round); context.setLineJoin(.round)
         context.setStrokeColor((inverted ? UIColor.white : UIColor.black).cgColor)
@@ -18,20 +51,14 @@ enum StencilRenderer {
             case .shadows: context.setLineDash(phase: 0, lengths: [parameters.dashLength * strokeScale, parameters.dashSpacing * strokeScale])
             case .highlights: context.setLineDash(phase: 0, lengths: [0.5 * strokeScale, 3 * strokeScale])
             }
-            for contour in result.contours(for: kind) {
+            for stroke in prepared.layers[kind] ?? [] {
                 if Task.isCancelled { return }
-                guard let first = contour.points.first else { continue }
                 if kind == .outlines {
-                    let stroke = OutlineStroke.style(primary: contour.isPrimary, emphasis: parameters.outlineEmphasis)
-                    context.setLineWidth(style.width * strokeScale * stroke.widthMultiplier)
-                    context.setAlpha(style.opacity * stroke.opacityMultiplier)
+                    let appearance = OutlineStroke.style(primary: stroke.primary, emphasis: parameters.outlineEmphasis)
+                    context.setLineWidth(style.width * strokeScale * appearance.widthMultiplier)
+                    context.setAlpha(style.opacity * appearance.opacityMultiplier)
                 }
-                context.beginPath(); context.move(to: CGPoint(x: first.x, y: first.y))
-                for (index, point) in contour.points.dropFirst().enumerated() {
-                    if index % 4096 == 0 && Task.isCancelled { return }
-                    context.addLine(to: CGPoint(x: point.x, y: point.y))
-                }
-                if contour.closed { context.closePath() }
+                context.beginPath(); context.addPath(stroke.path)
                 context.strokePath()
             }
         }

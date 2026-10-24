@@ -4,7 +4,8 @@ import Foundation
 /// Keeping the mask at thumbnail size avoids a native-resolution mask allocation.
 public struct SubjectGuidance: Sendable {
     public let mask: GrayImage
-    public init(mask: GrayImage) { self.mask = mask }
+    public let revision: UUID
+    public init(mask: GrayImage) { self.mask = mask; self.revision = UUID() }
     public func value(x: Int, y: Int, width: Int, height: Int) -> Float {
         let mx = min(mask.width-1, max(0, x * mask.width / width))
         let my = min(mask.height-1, max(0, y * mask.height / height))
@@ -14,10 +15,12 @@ public struct SubjectGuidance: Sendable {
         let r = max(2, Int((Double(max(width,height)) * 0.006).rounded()))
         let center = value(x: x,y: y,width: width,height: height)
         var low = center, high = center
-        for (dx,dy) in [(-r,0),(r,0),(0,-r),(0,r)] {
-            let v = value(x: x+dx,y: y+dy,width: width,height: height)
-            low = min(low,v); high = max(high,v)
-        }
+        let left = value(x: x-r,y: y,width: width,height: height)
+        let right = value(x: x+r,y: y,width: width,height: height)
+        let top = value(x: x,y: y-r,width: width,height: height)
+        let bottom = value(x: x,y: y+r,width: width,height: height)
+        low = min(low,min(min(left,right),min(top,bottom)))
+        high = max(high,max(max(left,right),max(top,bottom)))
         return high-low > 0.35 || (center > 0.15 && center < 0.85)
     }
     /// Raw traced paths have closely spaced vertices. Cut runs rather than joining

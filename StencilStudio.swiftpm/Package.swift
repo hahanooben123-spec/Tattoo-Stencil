@@ -14,7 +14,10 @@ let package = Package(
                         supportedInterfaceOrientations: [.landscapeLeft, .landscapeRight, .portrait, .portraitUpsideDown])
     ],
     targets: [
-        .target(name: "StencilCore", path: "Core"),
+        // The numeric CV loops must stay optimized when Playgrounds runs a debug UI.
+        // This is local to the self-contained app; the reusable root package has no unsafe flags.
+        .target(name: "StencilCore", path: "Core",
+                swiftSettings: [.unsafeFlags(["-O"], .when(configuration: .debug))]),
         .executableTarget(name: "StencilApp", dependencies: ["StencilCore"], path: "App")
     ]
 )

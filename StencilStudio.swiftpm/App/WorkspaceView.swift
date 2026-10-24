@@ -80,7 +80,7 @@ struct WorkspaceView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     if choosingSubject { Text("Tryk på det motiv, der skal fremhæves.").font(.callout).foregroundStyle(.purple) }
                     HStack { Text("Stencil"); Slider(value: $comparison, in: 0...1); Text("Reference") }
-                    if model.isBusy { ProgressView(value: model.progress) }
+                    if model.showsProgress { ProgressView(value: model.progress) }
                     HStack {
                         Text(model.status).font(.caption).foregroundStyle(.secondary)
                         Spacer()
@@ -136,11 +136,11 @@ struct WorkspaceView: View {
                 model.inverted ? Color.black : Color.white
                 if let debug = model.debugImage {
                     Image(decorative: debug, scale: 1).resizable().interpolation(.none)
-                } else if let result = model.result {
+                } else if let drawing = model.drawing {
                     Canvas(rendersAsynchronously: true) { context, size in
                         context.withCGContext { cg in
-                            cg.scaleBy(x: size.width / Double(result.width), y: size.height / Double(result.height))
-                            StencilRenderer.draw(result, context: cg, styles: model.styles, parameters: model.parameters,
+                            cg.scaleBy(x: size.width / Double(drawing.width), y: size.height / Double(drawing.height))
+                            StencilRenderer.draw(drawing, context: cg, styles: model.styles, parameters: model.parameters,
                                                  strokeScale: model.previewScale, inverted: model.inverted)
                         }
                     }
@@ -219,9 +219,9 @@ struct WorkspaceView: View {
         })
     }
     private func floatSlider(_ title: String, value: Binding<Float>, range: ClosedRange<Float>) -> some View {
-        VStack(alignment: .leading) { Text(title).font(.caption); Slider(value: value, in: range) }
+        VStack(alignment: .leading) { Text(title).font(.caption); Slider(value: value, in: range,onEditingChanged: { model.setInteracting($0) }) }
     }
     private func doubleSlider(_ title: String, value: Binding<Double>, range: ClosedRange<Double>) -> some View {
-        VStack(alignment: .leading) { Text("\(title): \(value.wrappedValue, specifier: "%.1f")").font(.caption); Slider(value: value, in: range) }
+        VStack(alignment: .leading) { Text("\(title): \(value.wrappedValue, specifier: "%.1f")").font(.caption); Slider(value: value, in: range,onEditingChanged: { model.setInteracting($0) }) }
     }
 }

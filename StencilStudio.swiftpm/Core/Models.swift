@@ -104,6 +104,14 @@ public struct Parameters: Sendable, Equatable {
         p.minimumHighlightArea = max(1, Int((Double(minimumHighlightArea) * scale * scale).rounded()))
         return p
     }
+    /// Stroke appearance does not affect generated geometry or verified caches.
+    public func hasSameGeometry(as other: Parameters) -> Bool {
+        var a = self, b = other
+        a.outlineEmphasis = 0; b.outlineEmphasis = 0
+        a.dashLength = 1; b.dashLength = 1
+        a.dashSpacing = 1; b.dashSpacing = 1
+        return a == b
+    }
 }
 public enum Preset: String, CaseIterable {
     case portrait = "Portrait Realism", animal = "Animal Realism", blackGray = "Black & Grey"
