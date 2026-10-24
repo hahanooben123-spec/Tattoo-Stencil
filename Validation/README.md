@@ -102,3 +102,11 @@ Facial priority now uses corridors along the model's eye/brow/nose/lip landmarks
 Before/after inspection used a private, 900-pixel grayscale conversion of the user's second screen photograph with identical `studio-detailed` parameters (detail 1, shadows 0.8). The old engine produced 385 outlines and 55 shadow paths; the revised non-Vision pipeline produced 375 outlines and 13 shadow paths. The local inspection shows fewer nested shadow contours. The CLI omits Vision, and the photograph contains screen borders/reflections; these results do not validate native-reference fidelity, actual facial model guidance or transfer usefulness. The photos and generated results remain gitignored. Artist/device validation remains the user's next step.
 
 Targeted regressions cover landmark-corridor priority without invented geometry, complete-path duplicate rejection with crossing preservation and exact coordinates, and a single shadow-mass boundary across a four-tone reference.
+
+## Fine-line target reference
+
+The user supplied a paired realism image/fine-line stencil as the intended visual style. It establishes continuous fine form outlines, selective broken tonal guides, open areas of skin, and restrained line-weight differences. The reference is a target, not an output or a validated automatic result.
+
+`StencilPath` rounds shallow polyline turns and tiny staircase corners into quadratic curves inside adjacent source-segment hulls. Open endpoints remain fixed; long-segment sharp corners remain sharp. The deviation limit is max(0.5, 0.6 × longest side / 900) image pixels, and rounding is bounded by the adjacent segment lengths. Prepared Core Graphics paths and the CLI SVG exporter share these commands. Geometry agreement statistics still measure traced polylines, not rasterized rounded curves.
+
+Simple-control shadow dashes now use image-relative 4-unit marks and 8-unit gaps, instead of unscaled native-pixel lengths. Preview rendering enforces visible gaps when line widths hit the device-pixel minimum. Primary/detail width differences are reduced; opacity remains 1. Tests verify curve deviation, endpoint preservation, deliberate graphic corners and resolution-relative dash spacing. The supplied screen photograph was also rendered through the SVG path for visual inspection; actual iPad/native-reference quality still needs the user's judgment.

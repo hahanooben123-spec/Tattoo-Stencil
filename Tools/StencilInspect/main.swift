@@ -59,18 +59,25 @@ func savePGM(_ values: [UInt8], width: Int, height: Int, to url: URL) throws {
     try data.write(to: url)
 }
 
-func svg(_ result: StencilResult, only: LayerKind? = nil) -> String {
+func svg(_ result: StencilResult, parameters: Parameters,only: LayerKind? = nil) throws -> String {
+    let strokeScale = parameters.samplingScale
     var text = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 \(result.width) \(result.height)\" width=\"\(result.width)\" height=\"\(result.height)\">\n<rect width=\"100%\" height=\"100%\" fill=\"white\"/>\n"
     for layer in LayerKind.allCases where only == nil || only == layer {
-        let dash = layer == .shadows ? " stroke-dasharray=\"7 5\"" : layer == .highlights ? " stroke-dasharray=\"0.5 3\"" : ""
-        text += "<g id=\"\(layer.rawValue)\" fill=\"none\" stroke=\"black\" stroke-width=\"1.5\" stroke-linejoin=\"round\" stroke-linecap=\"round\"\(dash)>\n"
+        let dash = layer == .shadows ? " stroke-dasharray=\"\(parameters.dashLength*strokeScale) \(parameters.dashSpacing*strokeScale)\"" : layer == .highlights ? " stroke-dasharray=\"\(0.5*strokeScale) \(3*strokeScale)\"" : ""
+        text += "<g id=\"\(layer.rawValue)\" fill=\"none\" stroke=\"black\" stroke-width=\"\(1.5*strokeScale)\" stroke-linejoin=\"round\" stroke-linecap=\"round\"\(dash)>\n"
         for contour in result.contours(for: layer) {
-            guard let first = contour.points.first else { continue }
-            var d = "M \(first.x) \(first.y)"
-            for point in contour.points.dropFirst() { d += " L \(point.x) \(point.y)" }
-            if contour.closed { d += " Z" }
-            let stroke = OutlineStroke.style(primary: contour.isPrimary,emphasis: Parameters().outlineEmphasis)
-            let outlineStyle = layer == .outlines ? " stroke-width=\"\(1.5*stroke.widthMultiplier)\" opacity=\"\(stroke.opacityMultiplier)\" data-primary=\"\(contour.isPrimary)\"" : ""
+            guard !contour.points.isEmpty else { continue }
+            let geometry = try StencilPath(contour: contour,maximumDeviation: StencilPath.roundingLimit(width: result.width,height: result.height))
+            var d = "M \(geometry.start.x) \(geometry.start.y)"
+            for element in geometry.elements {
+                switch element {
+                case let .line(point): d += " L \(point.x) \(point.y)"
+                case let .quadratic(control,point): d += " Q \(control.x) \(control.y) \(point.x) \(point.y)"
+                }
+            }
+            if geometry.closed { d += " Z" }
+            let stroke = OutlineStroke.style(primary: contour.isPrimary,emphasis: parameters.outlineEmphasis)
+            let outlineStyle = layer == .outlines ? " stroke-width=\"\(1.5*strokeScale*stroke.widthMultiplier)\" opacity=\"\(stroke.opacityMultiplier)\" data-primary=\"\(contour.isPrimary)\"" : ""
             text += "<path d=\"\(d)\"\(outlineStyle)/>\n"
         }
         text += "</g>\n"
@@ -98,13 +105,14 @@ do {
     let seconds = ProcessInfo.processInfo.systemUptime - start
     let previewImage = try source.downsampled(maximumDimension: previewSize)
     let previewStart = ProcessInfo.processInfo.systemUptime
-    let preview = try StencilProcessingCoordinator().process(previewImage, parameters: p.forPreview(scale: Double(previewImage.width)/Double(source.width)))
+    let previewParameters = try p.forPreview(scale: Double(previewImage.width)/Double(source.width))
+    let preview = try StencilProcessingCoordinator().process(previewImage, parameters: previewParameters)
     let previewSeconds = ProcessInfo.processInfo.systemUptime - previewStart
     let agreement = try PreviewFidelity.compare(preview: preview, final: result)
-    try svg(preview).write(to: folder.appendingPathComponent("preview.svg"), atomically: true, encoding: .utf8)
-    try svg(result).write(to: folder.appendingPathComponent("combined.svg"), atomically: true, encoding: .utf8)
+    try svg(preview,parameters: previewParameters).write(to: folder.appendingPathComponent("preview.svg"), atomically: true, encoding: .utf8)
+    try svg(result,parameters: p).write(to: folder.appendingPathComponent("combined.svg"), atomically: true, encoding: .utf8)
     for layer in LayerKind.allCases {
-        try svg(result, only: layer).write(to: folder.appendingPathComponent("\(layer.rawValue).svg"), atomically: true, encoding: .utf8)
+        try svg(result,parameters: p,only: layer).write(to: folder.appendingPathComponent("\(layer.rawValue).svg"), atomically: true, encoding: .utf8)
     }
     try savePGM(result.preprocessed.pixels.map { UInt8(($0*255).rounded()) }, width: source.width, height: source.height, to: folder.appendingPathComponent("preprocessed.pgm"))
     try savePGM(result.edges.map { $0 == 0 ? 255 : 0 }, width: source.width, height: source.height, to: folder.appendingPathComponent("edges.pgm"))

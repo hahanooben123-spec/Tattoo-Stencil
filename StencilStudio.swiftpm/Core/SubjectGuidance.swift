@@ -102,7 +102,7 @@ public struct OutlineStroke: Sendable {
     public let opacityMultiplier: Double
     public static func style(primary: Bool, emphasis: Float) -> OutlineStroke {
         let amount = Double(min(1,max(0,emphasis)))
-        return OutlineStroke(widthMultiplier: primary ? 1+amount : 1-0.15*amount,
+        return OutlineStroke(widthMultiplier: primary ? 1+0.5*amount : 1-0.08*amount,
                              opacityMultiplier: 1)
     }
 }

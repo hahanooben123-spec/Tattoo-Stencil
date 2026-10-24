@@ -69,7 +69,8 @@ final class SubjectGuidanceTests: XCTestCase {
     func testMainStrokeHasClearHierarchyAndCanBeNeutralized() {
         let primary = OutlineStroke.style(primary: true,emphasis: 0.8)
         let detail = OutlineStroke.style(primary: false,emphasis: 0.8)
-        XCTAssertGreaterThan(primary.widthMultiplier,detail.widthMultiplier*1.9)
+        XCTAssertGreaterThan(primary.widthMultiplier,detail.widthMultiplier*1.3)
+        XCTAssertLessThan(primary.widthMultiplier,detail.widthMultiplier*1.7)
         XCTAssertEqual(primary.opacityMultiplier,1)
         XCTAssertEqual(detail.opacityMultiplier,1)
         XCTAssertEqual(OutlineStroke.style(primary: true,emphasis: 0).widthMultiplier,1)

@@ -22,6 +22,7 @@ public struct StencilControls: Sendable, Equatable {
         p.shadowSpacing = min(16, (3+Double(1-shadows)*3)*unit)
         p.tonalLevels = 3+Int((shadows*3).rounded())
         p.shadowSensitivity = shadows*0.8
+        p.dashLength = 4*unit; p.dashSpacing = 8*unit
         p.regionCoherence = 0.8; p.shadowsEnabled = shadows > 0.01
         return p
     }

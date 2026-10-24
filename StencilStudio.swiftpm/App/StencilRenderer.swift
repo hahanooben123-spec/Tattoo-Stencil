@@ -18,13 +18,18 @@ enum StencilRenderer {
             var strokes: [PreparedStencil.Stroke] = []
             for contour in result.contours(for: kind) {
                 try Task.checkCancellation()
-                guard let first = contour.points.first else { continue }
-                let path = CGMutablePath(); path.move(to: CGPoint(x: first.x,y: first.y))
-                for (index,point) in contour.points.dropFirst().enumerated() {
+                guard !contour.points.isEmpty else { continue }
+                let geometry = try StencilPath(contour: contour,maximumDeviation: StencilPath.roundingLimit(width: result.width,height: result.height))
+                let path = CGMutablePath(); path.move(to: CGPoint(x: geometry.start.x,y: geometry.start.y))
+                for (index,element) in geometry.elements.enumerated() {
                     if index % 4096 == 0 { try Task.checkCancellation() }
-                    path.addLine(to: CGPoint(x: point.x,y: point.y))
+                    switch element {
+                    case let .line(point): path.addLine(to: CGPoint(x: point.x,y: point.y))
+                    case let .quadratic(control,point):
+                        path.addQuadCurve(to: CGPoint(x: point.x,y: point.y),control: CGPoint(x: control.x,y: control.y))
+                    }
                 }
-                if contour.closed { path.closeSubpath() }
+                if geometry.closed { path.closeSubpath() }
                 guard let immutable = path.copy() else { throw ImportError.allocation }
                 strokes.append(PreparedStencil.Stroke(path: immutable,primary: contour.isPrimary))
             }
@@ -52,7 +57,9 @@ enum StencilRenderer {
             context.setLineWidth(max(minimumWidth,style.width * strokeScale))
             switch kind {
             case .outlines: context.setLineDash(phase: 0, lengths: [])
-            case .shadows: context.setLineDash(phase: 0, lengths: [parameters.dashLength * strokeScale, parameters.dashSpacing * strokeScale])
+            case .shadows:
+                context.setLineDash(phase: 0,lengths: [max(parameters.dashLength*strokeScale,minimumWidth*1.5),
+                                                      max(parameters.dashSpacing*strokeScale,minimumWidth*3)])
             case .highlights: context.setLineDash(phase: 0, lengths: [0.5 * strokeScale, 3 * strokeScale])
             }
             for stroke in prepared.layers[kind] ?? [] {
