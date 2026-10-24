@@ -69,7 +69,9 @@ func svg(_ result: StencilResult, only: LayerKind? = nil) -> String {
             var d = "M \(first.x) \(first.y)"
             for point in contour.points.dropFirst() { d += " L \(point.x) \(point.y)" }
             if contour.closed { d += " Z" }
-            text += "<path d=\"\(d)\"/>\n"
+            let stroke = OutlineStroke.style(primary: contour.isPrimary,emphasis: Parameters().outlineEmphasis)
+            let outlineStyle = layer == .outlines ? " stroke-width=\"\(1.5*stroke.widthMultiplier)\" opacity=\"\(stroke.opacityMultiplier)\" data-primary=\"\(contour.isPrimary)\"" : ""
+            text += "<path d=\"\(d)\"\(outlineStyle)/>\n"
         }
         text += "</g>\n"
     }
@@ -106,6 +108,7 @@ do {
     let report: [String: Any] = [
         "width": result.width, "height": result.height, "processingSeconds": seconds,
         "outlines": result.outlines.count, "shadows": result.shadows.count, "highlights": result.highlights.count,
+        "primaryOutlines": result.outlines.filter(\.isPrimary).count,
         "shortPathsUnderFivePixels": all.filter { $0.length < 5 }.count,
         "closedPaths": all.filter(\.closed).count, "thresholds": result.segmentation.thresholds.map(Double.init),
         "stageSeconds": stages.snapshot(), "previewProcessingSeconds": previewSeconds,

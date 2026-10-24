@@ -21,6 +21,11 @@ enum StencilRenderer {
             for contour in result.contours(for: kind) {
                 if Task.isCancelled { return }
                 guard let first = contour.points.first else { continue }
+                if kind == .outlines {
+                    let stroke = OutlineStroke.style(primary: contour.isPrimary, emphasis: parameters.outlineEmphasis)
+                    context.setLineWidth(style.width * strokeScale * stroke.widthMultiplier)
+                    context.setAlpha(style.opacity * stroke.opacityMultiplier)
+                }
                 context.beginPath(); context.move(to: CGPoint(x: first.x, y: first.y))
                 for (index, point) in contour.points.dropFirst().enumerated() {
                     if index % 4096 == 0 && Task.isCancelled { return }

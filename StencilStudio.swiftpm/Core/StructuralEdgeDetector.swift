@@ -4,7 +4,7 @@ public struct StructuralEdgeDetector: Sendable {
     public init() {}
     /// Fine Scharr localization with coarse-scale support and local contrast ranking.
     /// Coarse information ranks existing fine edges; it never moves their coordinates.
-    public func detect(_ image: GrayImage, parameters p: Parameters) throws -> [UInt8] {
+    public func detect(_ image: GrayImage, parameters p: Parameters, guidance: SubjectGuidance? = nil) throws -> [UInt8] {
         try p.validate()
         let w = image.width, h = image.height, n = w * h
         var magnitude = [Float](repeating: 0, count: n)
@@ -38,13 +38,17 @@ public struct StructuralEdgeDetector: Sendable {
             try Task.checkCancellation()
             for x in 1..<(w - 1) {
                 let i = y * w + x, m = magnitude[i], d = offsets[Int(direction[i])]
+                let nearSubject = guidance?.boundary(x: x,y: y,width: w,height: h) ?? false
+                if let guidance, !nearSubject && guidance.value(x: x,y: y,width: w,height: h) < 0.15 { continue }
                 let penalty = p.textureSuppression * (1 - support[i]) * (1 - 0.65 * p.detail)
                 let score = m * (1 - penalty)
                 let contrastFloor: Float = 0.008 + (1 - p.detail) * 0.035
+                let localHigh = nearSubject ? high * 0.55 : high
+                let localLow = nearSubject ? low * 0.55 : low
                 // Asymmetric plateau tie-break prevents doubled step edges.
-                if score >= low && (localContrast[i] >= contrastFloor || m >= high * 2),
+                if score >= localLow && (localContrast[i] >= contrastFloor * (nearSubject ? 0.5 : 1) || m >= high * 2),
                    m > magnitude[i-d] && m >= magnitude[i+d] {
-                    state[i] = score >= high ? 2 : 1
+                    state[i] = score >= localHigh ? 2 : 1
                     if state[i] == 2 { queue.append(i) }
                 }
             }

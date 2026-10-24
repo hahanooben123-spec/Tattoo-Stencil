@@ -5,12 +5,21 @@ private struct ProcessingDelivery: Sendable {
     let result: StencilResult
     let agreement: PreviewAgreement?
     let exportURL: URL?
+    let subject: SubjectAnalysis
 }
 
 @MainActor
 final class WorkspaceModel: ObservableObject {
     @Published var parameters = Preset.portrait.parameters
-    @Published var styles = Dictionary(uniqueKeysWithValues: LayerKind.allCases.map { ($0, LayerStyle()) })
+    @Published var controls = StencilControls()
+    @Published var subjectEnabled = true
+    @Published private(set) var subjectStatus = "Motivet findes automatisk ved import"
+    @Published var styles = Dictionary(uniqueKeysWithValues: LayerKind.allCases.map { kind in
+        var style = LayerStyle()
+        if kind == .outlines { style.width = 2 }
+        else { style.opacity = kind == .shadows ? 0.5 : 0.4; style.width = 1 }
+        return (kind, style)
+    })
     @Published var imported: ImportedImage?
     @Published var result: StencilResult?
     @Published var isBusy = false
@@ -33,6 +42,27 @@ final class WorkspaceModel: ObservableObject {
     private var revision = UUID()
     private let lane = ProcessingLane()
     private var processedParameters: Parameters?
+    private var subjectPoint: Point?
+    private var cachedSubject: SubjectAnalysis?
+
+    func applyControls() {
+        do { parameters = try controls.parameters(width: imported?.width ?? 900,height: imported?.height ?? 900) }
+        catch { self.error = error.localizedDescription }
+    }
+    func parametersChanged(from previous: Parameters) {
+        var analysisOnly = parameters
+        analysisOnly.outlineEmphasis = previous.outlineEmphasis
+        if analysisOnly == previous {
+            processedParameters?.outlineEmphasis = parameters.outlineEmphasis
+            exportURL = nil
+        } else { schedulePreview() }
+    }
+    func selectSubject(_ point: Point?) {
+        subjectPoint = point; cachedSubject = nil; schedulePreview()
+    }
+    func subjectModeChanged() {
+        cachedSubject = nil; schedulePreview()
+    }
 
     var sourceSize: String {
         guard let source = imported else { return "No reference" }
@@ -60,6 +90,7 @@ final class WorkspaceModel: ObservableObject {
     func importData(_ data: Data) {
         cancel(); result = nil; debugImage = nil; imported = nil; exportURL = nil
         agreement = nil; fullResolutionVerified = false; processedParameters = nil
+        subjectPoint = nil; cachedSubject = nil; subjectStatus = "Finder motiv …"
         isBusy = true; progress = 0; status = "Decoding reference thumbnail"
         let id = revision, lane = lane
         let task = Task.detached(priority: .userInitiated) {
@@ -70,7 +101,7 @@ final class WorkspaceModel: ObservableObject {
             do {
                 let image = try await task.value
                 guard revision == id else { return }
-                imported = image; importWorker = nil; schedulePreview()
+                imported = image; importWorker = nil; applyControls(); schedulePreview()
             } catch { finish(error, revision: id) }
         }
     }
@@ -80,6 +111,7 @@ final class WorkspaceModel: ObservableObject {
         cancel(); exportURL = nil; agreement = nil
         result = nil; debugImage = nil; fullResolutionVerified = false; processedParameters = nil
         let id = revision, source = imported.preview, p = parameters, lane = lane
+        let enabled = subjectEnabled, cachedSubject = cachedSubject, point = subjectPoint
         let scale = Double(source.width) / Double(imported.width)
         isBusy = true; progress = 0; status = "Approximate preview pending"
         debounce = Task {
@@ -89,14 +121,20 @@ final class WorkspaceModel: ObservableObject {
                 let callback = progressCallback(id: id, prefix: "Preview · ")
                 let task = Task.detached(priority: .userInitiated) {
                     try await lane.run {
-                        let output = try StencilProcessingCoordinator().process(source, parameters: p.forPreview(scale: scale), progress: callback)
-                        return ProcessingDelivery(result: output, agreement: nil, exportURL: nil)
+                        callback(0,"Finder hovedmotiv")
+                        let subject: SubjectAnalysis
+                        if enabled { subject = try cachedSubject ?? AppleSubjectDetector.detect(imported.previewImage,point: point) }
+                        else { subject = SubjectAnalysis(guidance: nil,message: "Hele billedet · motivfokus slået fra") }
+                        let output = try StencilProcessingCoordinator().process(source, parameters: p.forPreview(scale: scale),
+                                                                               guidance: subject.guidance, progress: callback)
+                        return ProcessingDelivery(result: output, agreement: nil, exportURL: nil,subject: subject)
                     }
                 }
                 worker = task
                 let output = try await task.value
                 guard revision == id else { return }
                 result = output.result; processedParameters = p; worker = nil; isBusy = false; updateDebug()
+                self.cachedSubject = output.subject; subjectStatus = output.subject.message
                 status = "Approximate preview · verify full resolution before transfer"
             } catch { finish(error, revision: id) }
         }
@@ -130,6 +168,7 @@ final class WorkspaceModel: ObservableObject {
         let preview = !fullResolutionVerified ? result : nil
         cancel(); exportURL = nil; result = nil; debugImage = nil; fullResolutionVerified = false
         let id = revision, p = parameters, lane = lane, limits = ProcessingLimits.device
+        let enabled = subjectEnabled, cachedSubject = cachedSubject, point = subjectPoint
         let styles = styles, mm = widthMM, transparent = transparent, inverted = inverted, format = exportFormat
         let previousAgreement = agreement
         isBusy = true; progress = 0; status = "Checking full-resolution memory budget"
@@ -137,18 +176,21 @@ final class WorkspaceModel: ObservableObject {
         let task = Task.detached(priority: .userInitiated) {
             try await lane.run {
                 _ = try limits.bounded(width: imported.width, height: imported.height)
+                let subject: SubjectAnalysis
+                if enabled { subject = try cachedSubject ?? AppleSubjectDetector.detect(imported.previewImage,point: point) }
+                else { subject = SubjectAnalysis(guidance: nil,message: "Hele billedet · motivfokus slået fra") }
                 let output: StencilResult
                 if let cached { output = cached }
                 else {
                     let input = try ImageImportService.fullLuminance(imported, limits: limits)
-                    output = try StencilProcessingCoordinator().process(input, parameters: p, limits: limits, progress: callback)
+                    output = try StencilProcessingCoordinator().process(input, parameters: p, limits: limits, guidance: subject.guidance, progress: callback)
                 }
                 try Task.checkCancellation()
                 let agreement = try preview.map { try PreviewFidelity.compare(preview: $0, final: output) } ?? previousAgreement
                 let url = exporting ? try ExportService.export(output, styles: styles, parameters: p, widthMM: mm,
                                                                transparent: transparent, inverted: inverted, format: format) : nil
                 try Task.checkCancellation()
-                return ProcessingDelivery(result: output, agreement: agreement, exportURL: url)
+                return ProcessingDelivery(result: output, agreement: agreement, exportURL: url,subject: subject)
             }
         }
         worker = task
@@ -157,6 +199,7 @@ final class WorkspaceModel: ObservableObject {
                 let delivery = try await task.value
                 guard revision == id else { return }
                 result = delivery.result; processedParameters = p; fullResolutionVerified = true; agreement = delivery.agreement
+                self.cachedSubject = delivery.subject; subjectStatus = delivery.subject.message
                 worker = nil; isBusy = false; updateDebug()
                 guard self.styles == styles, self.widthMM == mm, self.transparent == transparent,
                       self.inverted == inverted, self.exportFormat == format else {

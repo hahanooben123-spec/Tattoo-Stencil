@@ -14,3 +14,4 @@ jobs:
       - uses: actions/checkout@v4
       - run: swift --version
       - run: swift test
+      - run: bash Tools/check-ios-sources.sh

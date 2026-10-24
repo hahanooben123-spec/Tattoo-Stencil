@@ -13,72 +13,43 @@ struct WorkspaceView: View {
     @State private var zoom = 1.0
     @State private var gestureBase = 1.0
     @State private var preset = Preset.portrait
+    @State private var choosingSubject = false
+    @State private var showAdvanced = false
 
     var body: some View {
         NavigationSplitView {
             Form {
                 Section("Reference") {
-                    PhotosPicker(selection: $photo, matching: .images) { Label("Import photo", systemImage: "photo") }
-                    Button("Import from Files") { showFiles = true }
+                    PhotosPicker(selection: $photo, matching: .images) { Label("Vælg billede", systemImage: "photo") }
+                    Button("Åbn fra Filer") { showFiles = true }
                     Text(model.sourceSize).font(.caption).foregroundStyle(.secondary)
-                    Picker("Preset", selection: $preset) { ForEach(Preset.allCases, id: \.self) { Text($0.rawValue).tag($0) } }
-                    Text("Presets are starting points. Adjust every parameter below.").font(.caption).foregroundStyle(.secondary)
-                }
-                Section("Structural outlines") {
-                    floatSlider("Detail", value: $model.parameters.detail, range: 0...1)
-                    floatSlider("Texture suppression", value: $model.parameters.textureSuppression, range: 0...1)
-                    floatSlider("Edge threshold", value: $model.parameters.edgeThreshold, range: 0.01...0.8)
-                    doubleSlider("Minimum length · px", value: $model.parameters.minimumContourLength, range: 0...160)
-                    doubleSlider("Simplification · px", value: $model.parameters.smoothing, range: 0...2)
-                }
-                Section("Shadow boundaries") {
-                    Stepper("Tonal levels: \(model.parameters.tonalLevels)", value: $model.parameters.tonalLevels, in: 3...10)
-                    floatSlider("Sensitivity", value: $model.parameters.shadowSensitivity, range: 0...1)
-                    floatSlider("Region coherence", value: $model.parameters.regionCoherence, range: 0...1)
-                    doubleSlider("Minimum boundary spacing · px", value: $model.parameters.shadowSpacing, range: 0...16)
-                    Toggle("Suppress overlaps with outlines", isOn: $model.parameters.suppressOutlineDuplicates)
-                    Stepper("Minimum area: \(model.parameters.minimumRegionArea) px²", value: $model.parameters.minimumRegionArea, in: 1...10000, step: 25)
-                    doubleSlider("Dash length · px", value: $model.parameters.dashLength, range: 1...30)
-                    doubleSlider("Dash spacing · px", value: $model.parameters.dashSpacing, range: 1...30)
-                }
-                Section("Highlights · experimental") {
-                    Toggle("Generate highlights", isOn: $model.parameters.highlightsEnabled)
-                    floatSlider("Sensitivity", value: $model.parameters.highlightSensitivity, range: 0...1)
-                    Stepper("Minimum area: \(model.parameters.minimumHighlightArea) px²", value: $model.parameters.minimumHighlightArea, in: 1...10000, step: 25)
-                }
-                Section("Preprocessing") {
-                    floatSlider("Noise reduction", value: $model.parameters.noiseReduction, range: 0...1)
-                    floatSlider("Contrast", value: $model.parameters.contrast, range: 0.5...2)
-                    Toggle("Invert stencil colors", isOn: $model.inverted)
-                    Toggle("Transparent PNG", isOn: $model.transparent)
-                }
-                Section("Layers · source-pixel widths") {
-                    ForEach(LayerKind.allCases, id: \.self) { kind in
-                        VStack(alignment: .leading) {
-                            Toggle(kind.rawValue.capitalized, isOn: style(kind, \.visible))
-                            doubleSlider("Opacity", value: style(kind, \.opacity), range: 0...1)
-                            doubleSlider("Width", value: style(kind, \.width), range: 0.4...6)
-                        }
+                    if model.imported != nil {
+                        Button(choosingSubject ? "Annuller motivvalg" : "Vælg hovedmotiv") {
+                            choosingSubject.toggle()
+                            comparison = choosingSubject ? 1 : 0
+                        }.disabled(model.isBusy || !model.subjectEnabled)
+                        Text(model.subjectStatus).font(.caption).foregroundStyle(.secondary)
                     }
-                    Text("To export one layer, hide the others.").font(.caption).foregroundStyle(.secondary)
                 }
-                Section("Export") {
-                    Picker("Format", selection: $model.exportFormat) { ForEach(ExportFormat.allCases, id: \.self) { Text($0.rawValue).tag($0) } }
-                    HStack { Text("Width · mm"); TextField("Width", value: $model.widthMM, format: .number).keyboardType(.decimalPad).multilineTextAlignment(.trailing) }
-                    Text(String(format: "Height: %.1f mm · aspect ratio locked", model.heightMM)).font(.caption)
-                    Button("Generate full-resolution export") { model.export() }
-                        .disabled(model.imported == nil || model.isBusy || !model.widthMM.isFinite || !(10...2000).contains(model.widthMM))
-                    if let url = model.exportURL { ShareLink(item: url) { Label("Save or share export", systemImage: "square.and.arrow.up") } }
-                    Text("PDF page size matches the requested dimensions. Select 100% / actual size when printing; verify with a ruler.").font(.caption).foregroundStyle(.secondary)
-                }
-                Section("Inspect processing") {
-                    Button("Verify full resolution") { model.verifyFullResolution() }
-                        .disabled(model.imported == nil || model.isBusy)
-                    Text(model.fullResolutionVerified ? "Showing verified final paths" : "Interactive preview is approximate")
+                Section("Stencil") {
+                    floatSlider("Detaljer", value: $model.controls.detail, range: 0...1)
+                    floatSlider("Hovedkontur", value: $model.controls.outlineEmphasis, range: 0...1)
+                    floatSlider("Skygger", value: $model.controls.shadows, range: 0...1)
+                    Text("Tydelig hovedkontur, fine detaljer og diskrete skyggelinjer.")
                         .font(.caption).foregroundStyle(.secondary)
-                    if let text = model.agreementText { Text(text).font(.caption) }
-                    Picker("Stage", selection: $model.debugStage) { ForEach(DebugStage.allCases, id: \.self) { Text($0.rawValue).tag($0) } }
-                    if let result = model.result { Text("Adaptive thresholds: " + result.segmentation.thresholds.map { String(format: "%.2f", $0) }.joined(separator: ", ")).font(.caption.monospaced()) }
+                }
+                Section("Eksport") {
+                    Picker("Format", selection: $model.exportFormat) { ForEach(ExportFormat.allCases, id: \.self) { Text($0.rawValue).tag($0) } }
+                    HStack { Text("Bredde · mm"); TextField("Bredde", value: $model.widthMM, format: .number).keyboardType(.decimalPad).multilineTextAlignment(.trailing) }
+                    Text(String(format: "Højde: %.1f mm", model.heightMM)).font(.caption)
+                    Button("Kontrollér endelig stencil") { model.verifyFullResolution() }.disabled(model.imported == nil || model.isBusy)
+                    Button("Eksportér stencil") { model.export() }
+                        .disabled(model.imported == nil || model.isBusy || !model.widthMM.isFinite || !(10...2000).contains(model.widthMM))
+                    if let url = model.exportURL { ShareLink(item: url) { Label("Gem eller del", systemImage: "square.and.arrow.up") } }
+                    Text("Print ved 100 % / faktisk størrelse. Kontrollér målet med en lineal.").font(.caption).foregroundStyle(.secondary)
+                }
+                Section {
+                    DisclosureGroup("Avanceret",isExpanded: $showAdvanced) { advancedControls }
                 }
             }
             .navigationTitle("Stencil Studio")
@@ -107,6 +78,7 @@ struct WorkspaceView: View {
                     }
                 }.background(Color(white: 0.10))
                 VStack(alignment: .leading, spacing: 8) {
+                    if choosingSubject { Text("Tryk på det motiv, der skal fremhæves.").font(.callout).foregroundStyle(.purple) }
                     HStack { Text("Stencil"); Slider(value: $comparison, in: 0...1); Text("Reference") }
                     if model.isBusy { ProgressView(value: model.progress) }
                     HStack {
@@ -114,7 +86,7 @@ struct WorkspaceView: View {
                         Spacer()
                         if model.isBusy { Button("Cancel") { model.cancel() }.font(.caption) }
                     }
-                    Text("Development build · inspect every line before transfer. Manual editing is planned for Phase 3.")
+                    Text(model.fullResolutionVerified ? "Endelig stencil · kontrollér før overførsel" : "Forhåndsvisning · kontrollér den endelige stencil før overførsel")
                         .font(.caption2).foregroundStyle(.secondary)
                 }.padding()
             }
@@ -141,7 +113,10 @@ struct WorkspaceView: View {
             } catch { if !Task.isCancelled { model.error = error.localizedDescription } }
         }
         .onChange(of: preset) { _, value in model.parameters = value.parameters }
-        .onChange(of: model.parameters) { _, _ in model.schedulePreview() }
+        .onChange(of: model.controls) { _, _ in model.applyControls() }
+        .onChange(of: model.parameters) { previous, _ in model.parametersChanged(from: previous) }
+        .onChange(of: model.subjectEnabled) { _, _ in model.subjectModeChanged() }
+        .onChange(of: showAdvanced) { _, expanded in if !expanded { model.debugStage = .stencil } }
         .onChange(of: model.debugStage) { _, _ in model.updateDebug() }
         .onChange(of: model.widthMM) { _, _ in model.exportURL = nil }
         .onChange(of: model.transparent) { _, _ in model.exportURL = nil }
@@ -176,8 +151,65 @@ struct WorkspaceView: View {
                     Rectangle().fill(Color.purple).frame(width: 2).offset(x: geometry.size.width * comparison)
                 }
             }
+            .contentShape(Rectangle())
+            .onTapGesture { location in
+                guard choosingSubject, model.subjectEnabled else { return }
+                model.selectSubject(Point(Double(location.x/geometry.size.width),Double(location.y/geometry.size.height)))
+                choosingSubject = false; comparison = 0
+            }
         }
         .accessibilityLabel("Image-aligned stencil preview. Use the comparison slider to reveal the reference.")
+    }
+
+    private var advancedControls: some View {
+        VStack(alignment: .leading,spacing: 18) {
+            Toggle("Fokus på motiv · Apple Vision",isOn: $model.subjectEnabled)
+            Button("Find automatisk hovedmotiv igen") { model.selectSubject(nil) }.disabled(model.imported == nil || model.isBusy)
+            Picker("Preset", selection: $preset) { ForEach(Preset.allCases, id: \.self) { Text($0.rawValue).tag($0) } }
+            advancedOutlineControls
+            advancedShadowControls
+            VStack(alignment: .leading) {
+                Text("Højlys og baggrund").font(.headline)
+                Toggle("Markér højlys",isOn: $model.parameters.highlightsEnabled)
+                floatSlider("Følsomhed for højlys",value: $model.parameters.highlightSensitivity,range: 0...1)
+                floatSlider("Støjreduktion",value: $model.parameters.noiseReduction,range: 0...1)
+                floatSlider("Kontrast",value: $model.parameters.contrast,range: 0.5...2)
+                Toggle("Invertér farver",isOn: $model.inverted)
+                Toggle("Transparent PNG",isOn: $model.transparent)
+            }
+            ForEach(LayerKind.allCases,id: \.self) { kind in
+                VStack(alignment: .leading) {
+                    Toggle(kind.rawValue.capitalized,isOn: style(kind,\.visible))
+                    doubleSlider("Opacitet",value: style(kind,\.opacity),range: 0...1)
+                    doubleSlider("Linjebredde · px",value: style(kind,\.width),range: 0.4...6)
+                }
+            }
+            Picker("Vis behandlingstrin",selection: $model.debugStage) { ForEach(DebugStage.allCases,id: \.self) { Text($0.rawValue).tag($0) } }
+            if let text = model.agreementText { Text(text).font(.caption) }
+        }.padding(.vertical,8)
+    }
+    private var advancedOutlineControls: some View {
+        VStack(alignment: .leading) {
+            Text("Konturer").font(.headline)
+            floatSlider("Teksturfilter",value: $model.parameters.textureSuppression,range: 0...1)
+            floatSlider("Kanttærskel",value: $model.parameters.edgeThreshold,range: 0.01...0.8)
+            doubleSlider("Mindste længde · px",value: $model.parameters.minimumContourLength,range: 0...500)
+            doubleSlider("Forenkling · px",value: $model.parameters.smoothing,range: 0...2)
+        }
+    }
+    private var advancedShadowControls: some View {
+        VStack(alignment: .leading) {
+            Text("Skyggegrænser").font(.headline)
+            Toggle("Skyggelinjer",isOn: $model.parameters.shadowsEnabled)
+            Stepper("Toneniveauer: \(model.parameters.tonalLevels)",value: $model.parameters.tonalLevels,in: 3...10)
+            floatSlider("Følsomhed",value: $model.parameters.shadowSensitivity,range: 0...1)
+            floatSlider("Sammenhæng",value: $model.parameters.regionCoherence,range: 0...1)
+            doubleSlider("Mindste afstand · px",value: $model.parameters.shadowSpacing,range: 0...16)
+            Toggle("Fjern overlap med konturer",isOn: $model.parameters.suppressOutlineDuplicates)
+            Stepper("Mindste område: \(model.parameters.minimumRegionArea) px²",value: $model.parameters.minimumRegionArea,in: 1...1_000_000,step: 100)
+            doubleSlider("Streglængde · px",value: $model.parameters.dashLength,range: 1...30)
+            doubleSlider("Mellemrum · px",value: $model.parameters.dashSpacing,range: 1...30)
+        }
     }
 
     private func style<T>(_ kind: LayerKind, _ key: WritableKeyPath<LayerStyle, T>) -> Binding<T> {

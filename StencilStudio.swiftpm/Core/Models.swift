@@ -39,7 +39,10 @@ public struct Point: Sendable, Equatable {
 public struct Contour: Sendable {
     public var points: [Point]
     public var closed: Bool
-    public init(points: [Point], closed: Bool = false) { self.points = points; self.closed = closed }
+    public var isPrimary: Bool
+    public init(points: [Point], closed: Bool = false, isPrimary: Bool = false) {
+        self.points = points; self.closed = closed; self.isPrimary = isPrimary
+    }
     public var length: Double {
         guard points.count > 1 else { return 0 }
         let open = zip(points, points.dropFirst()).reduce(0.0) { $0 + hypot($1.0.x - $1.1.x, $1.0.y - $1.1.y) }
@@ -73,11 +76,13 @@ public struct Parameters: Sendable, Equatable {
     public var regionCoherence: Float = 0.5
     public var shadowSpacing: Double = 3
     public var suppressOutlineDuplicates = true
+    public var outlineEmphasis: Float = 0.75
+    public var shadowsEnabled = true
     /// Internal analysis scale, relative to original pixels. Use forPreview(scale:).
     public var samplingScale: Double = 1
     public init() {}
     public func validate() throws {
-        let bounded: [Float] = [noiseReduction, detail, shadowSensitivity, highlightSensitivity, textureSuppression, regionCoherence]
+        let bounded: [Float] = [noiseReduction, detail, shadowSensitivity, highlightSensitivity, textureSuppression, regionCoherence, outlineEmphasis]
         guard bounded.allSatisfy({ $0.isFinite && (0...1).contains($0) }),
               contrast.isFinite, (0.1...3).contains(contrast),
               edgeThreshold.isFinite, (0.001...2).contains(edgeThreshold),

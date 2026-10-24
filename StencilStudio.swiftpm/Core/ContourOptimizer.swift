@@ -11,7 +11,7 @@ public struct ContourOptimizer: Sendable {
             if contour.closed { points.append(points[0]) }
             points = try simplify(points, tolerance: tolerance)
             if contour.closed && points.last == points.first { points.removeLast() }
-            if points.count >= (contour.closed ? 3 : 2) { output.append(Contour(points: points, closed: contour.closed)) }
+            if points.count >= (contour.closed ? 3 : 2) { output.append(Contour(points: points, closed: contour.closed, isPrimary: contour.isPrimary)) }
         }
         return output
     }
