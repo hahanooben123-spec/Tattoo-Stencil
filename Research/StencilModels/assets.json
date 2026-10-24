@@ -1,0 +1,62 @@
+[
+  {
+    "path": "teed/ted.py",
+    "url": "https://raw.githubusercontent.com/xavysp/TEED/40fa4b1391dc6424f88989d0ca75d5b592c8681d/ted.py",
+    "bytes": 10264,
+    "sha256": "ded257568a4775ed08f741daa228c43f0c020f6f773a62744e7be64d8a719373"
+  },
+  {
+    "path": "teed/utils/AF/Fsmish.py",
+    "url": "https://raw.githubusercontent.com/xavysp/TEED/40fa4b1391dc6424f88989d0ca75d5b592c8681d/utils/AF/Fsmish.py",
+    "bytes": 512,
+    "sha256": "e100aa88b3f84b036340c7f1b09e3a805712c6ac2688728758781e0c9acddc2d"
+  },
+  {
+    "path": "teed/utils/AF/Xsmish.py",
+    "url": "https://raw.githubusercontent.com/xavysp/TEED/40fa4b1391dc6424f88989d0ca75d5b592c8681d/utils/AF/Xsmish.py",
+    "bytes": 1071,
+    "sha256": "b161f4644e682bda4cbc0985809a0f7c07ac48ae374c038358a74b7c76b2c45d"
+  },
+  {
+    "path": "teed/LICENSE",
+    "url": "https://raw.githubusercontent.com/xavysp/TEED/40fa4b1391dc6424f88989d0ca75d5b592c8681d/LICENSE",
+    "bytes": 1074,
+    "sha256": "b62889ee92d00f60fb54ccbbb3c9bb0a1cdbc10bbf779f0d715e53f9acc8733d"
+  },
+  {
+    "path": "teed/model.pth",
+    "url": "https://raw.githubusercontent.com/xavysp/TEED/40fa4b1391dc6424f88989d0ca75d5b592c8681d/checkpoints/BIPED/7/7_model.pth",
+    "bytes": 249139,
+    "sha256": "d0109e7f40e7d9f1f495d34947eb08167e8fbb0a13b4e6ab3121261fb8d5a416"
+  },
+  {
+    "path": "drawings/model.py",
+    "url": "https://raw.githubusercontent.com/carolineec/informative-drawings/2349aee4daf7cb01d8de645b0bbb4f4392fd1395/model.py",
+    "bytes": 9405,
+    "sha256": "b5767c84166752f5f6185d4a65b3be3c1524bfaf0c524172b7636afe1a42e4f3"
+  },
+  {
+    "path": "drawings/LICENSE",
+    "url": "https://raw.githubusercontent.com/carolineec/informative-drawings/2349aee4daf7cb01d8de645b0bbb4f4392fd1395/LICENSE",
+    "bytes": 1070,
+    "sha256": "d12dd7d51af0afb8d6af4fdc18983a627be13559e1269422163bbe5353e3522e"
+  },
+  {
+    "path": "drawings/style1.pth",
+    "url": "https://huggingface.co/spaces/carolineec/informativedrawings/resolve/bd4b4299be505803e036203a39c02024b4cfee11/model.pth",
+    "bytes": 17173511,
+    "sha256": "c686ced2a666b4850b4bb6ccf0748031c3eda9f822de73a34b8979970d90f0c6"
+  },
+  {
+    "path": "drawings/style2.pth",
+    "url": "https://huggingface.co/spaces/carolineec/informativedrawings/resolve/bd4b4299be505803e036203a39c02024b4cfee11/model2.pth",
+    "bytes": 17173511,
+    "sha256": "30a534781061f34e83bb9406b4335da4ff2616c95d22a585c1245aa8363e74e0"
+  },
+  {
+    "path": "drawings/SPACE-README.md",
+    "url": "https://huggingface.co/spaces/carolineec/informativedrawings/resolve/bd4b4299be505803e036203a39c02024b4cfee11/README.md",
+    "bytes": 224,
+    "sha256": "7cb79f3b0f9354c7f47a1ab56b09c0e3bd6c8d96243555be5e28ea79d6e6c8a7"
+  }
+]

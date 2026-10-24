@@ -140,3 +140,7 @@ There is no Apple Pencil editing, selection, undo/redo, project persistence, exp
 1. **Phase 2:** validate and tune the new multiscale/local-contrast selection, region coherence and spacing against the six reference categories with an artist; improve highlight significance and distant concentric-band selection; add stage protocols and independent regeneration.
 2. **Phase 3:** persist generated vector paths separately from manual edits; implement Pencil/custom dashed paths, selection, per-layer undo and redo, direct printing, calibrated physical output and export integration tests.
 3. **Phase 4:** profile on actual iPads; extend current bounds/preflight with tiled processing for images beyond the working budget, then use further Accelerate/Metal work where measurements justify it. Revalidate tiled seams and full-resolution geometry.
+
+## Separate model prototype
+
+[Research/StencilModels](Research/StencilModels/README.md) compares pretrained TEED and Informative Drawings locally, with fixed asset hashes, private input/output directories, raw sketches, black-only candidates and a self-contained review page. This research prototype is separate from the iPad engine. It uses no metered inference or image upload. Informative Drawings style 1 is the most promising candidate on the two supplied portrait examples; no model has yet been integrated or validated for tattoo transfer.
