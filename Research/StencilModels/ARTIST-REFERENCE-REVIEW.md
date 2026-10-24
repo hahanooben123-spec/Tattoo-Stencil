@@ -61,5 +61,10 @@ held-out example. None is evidence of artist approval of the generated output.
 
 Private review: `Validation/Results/artist-examples/review.html`.
 Private provenance: `Validation/PrivateReferences/artist-example-pairs.json`.
-All outputs use the unchanged model pipeline from commit 2138d35; no new
-quality fix, fine-tuning, paid job or app integration is claimed by this review.
+The initial comparison used the unchanged model pipeline from commit 2138d35.
+A subsequent `layers-v2/` comparison adds supported-crest curve extraction and
+separate experimental source-gradient guides. It improves curve representation
+and some continuity, but still shows eye/lip clutter and paired sketch lines.
+Guide placement is not artist-equivalent. No fine-tuning, paid job or app
+integration has been performed. The review defaults to structural curves with
+experimental guides off, and keeps the previous black output available.

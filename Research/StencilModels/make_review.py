@@ -27,6 +27,9 @@ def main() -> None:
         contact_sheet(folder, Image.open(folder / "reference.png"), labels)
         items.append({"name": record["name"], "reference": embedded(folder / "reference.png"),
                       "target": embedded(folder / "artist-target.png") if (folder / "artist-target.png").exists() else None,
+                      "layers": {name: embedded(folder / "layers-v2" / f"{name}.png")
+                                 for name in ("structure", "guides", "combined")}
+                                if (folder / "layers-v2/combined.png").exists() else None,
                       "baseline": embedded(folder / "baseline.png") if (folder / "baseline.png").exists() else None,
                       "models": {model: {"raw": embedded(folder / model / "raw.png"),
                                          "black": embedded(folder / model / "stencil.png"),
@@ -54,27 +57,35 @@ dialog::backdrop{background:#000b}dialog img{display:block;max-height:88vh;max-w
 <nav><select id="image" aria-label="Billedudsnit"></select><select id="model" aria-label="Model">
 <option value="drawings-style1">Informative Drawings · stil 1</option><option value="teed">TEED</option>
 <option value="drawings-style2">Informative Drawings · stil 2</option></select>
-<button id="showBaseline" aria-pressed="false">Vis eksisterende motor</button></nav></header>
+<button id="showBaseline" aria-pressed="false">Vis eksisterende motor</button>
+<button id="showLayers" aria-pressed="true">Ny kurveversion</button>
+<button id="showGuides" aria-pressed="false">Eksperimentelle skyggeguides</button></nav></header>
 <main><div class="grid"><article><h2>Reference · beskåret input</h2><img id="reference" alt="Reference"></article>
 <article id="targetPanel" hidden><h2>Eksempelstencil · kun til sammenligning</h2><img id="target" alt="Brugerens eksempelstencil"></article>
 <article><h2 id="middleTitle">Rå modelskitse</h2><img id="raw" alt="Modelskitse"></article>
-<article><h2>Sorte linjer · prototype</h2><img id="black" alt="Sort stencilprototype"></article></div>
+<article><h2 id="blackTitle">Sorte linjer · prototype</h2><img id="black" alt="Sort stencilprototype"></article></div>
 <p id="timing" class="note"></p>
 <p class="note">Tryk på et billede for større visning. Eksisterende motor er den portable Swift-motor uden Apple Vision.
 Input er beskårne referencebilleder. Eksempelstenciler indgår ikke i modellernes input. Collagepaneler er ikke geometrisk registrerede træningspar; en tatovering på hud har også anden geometri. Reflekser, rammer og UI-symboler kan følge med.</p>
 <p class="note">Prototype til vurdering. Genererede streger kan afvige fra originalens former. Øjne, placering og overførselsværdi er ikke godkendt af en tatovør. Ingen model er indbygget i iPad-appen endnu.</p></main>
 <dialog id="zoom"><button id="close">Luk</button><img id="large" alt="Forstørret visning"></dialog>
-<script>const items=__DATA__;const $=id=>document.getElementById(id);let baseline=false;
+<script>const items=__DATA__;const $=id=>document.getElementById(id);let baseline=false,layers=true,guides=false;
 items.forEach((v,i)=>{const o=document.createElement('option');o.value=i;o.textContent=v.name;$('image').append(o)});
 $('image').value=Math.max(0,items.findIndex(v=>v.name==='target-art'));
 function update(){const item=items[Number($('image').value)],model=item.models[$('model').value],showBaseline=baseline&&!!item.baseline;
 $('reference').src=item.reference;$('raw').src=showBaseline?item.baseline:model.raw;$('black').src=model.black;
+const hasLayers=!!item.layers&&$('model').value==='drawings-style1',showLayers=layers&&hasLayers;
+if(showLayers){$('black').src=item.layers[guides?'combined':'structure']}
+$('showLayers').disabled=!hasLayers;$('showLayers').setAttribute('aria-pressed',showLayers);
+$('showGuides').disabled=!showLayers;$('showGuides').setAttribute('aria-pressed',showLayers&&guides);
+$('blackTitle').textContent=showLayers?'Sorte kurver'+(guides?' + eksperimentelle guides':'')+' · prototype':'Tidligere sorte linjer · prototype';
 $('targetPanel').hidden=!item.target;document.querySelector('.grid').classList.toggle('with-target',!!item.target);
 if(item.target){$('target').src=item.target}else{$('target').removeAttribute('src')}
 $('middleTitle').textContent=showBaseline?'Eksisterende motor · uden Vision':'Rå modelskitse';
 $('showBaseline').disabled=!item.baseline;$('showBaseline').setAttribute('aria-pressed',showBaseline);
 $('timing').textContent='En lokal CPU-kørsel: '+model.cpuSeconds.toFixed(2)+' sek. for modelberegning. Modelindlæsning, oprydning og filskrivning er ikke medregnet. Dette er ikke en iPad-måling.';}
 ['image','model'].forEach(id=>$(id).addEventListener('change',update));$('showBaseline').onclick=()=>{baseline=!baseline;update()};
+$('showLayers').onclick=()=>{layers=!layers;update()};$('showGuides').onclick=()=>{guides=!guides;update()};
 document.querySelectorAll('article img').forEach(el=>el.onclick=()=>{$('large').src=el.src;$('zoom').showModal()});
 $('close').onclick=()=>$('zoom').close();update();</script></html>'''
     html = html.replace("__DATA__", json.dumps(items, ensure_ascii=True).replace("</", "<\\/"))

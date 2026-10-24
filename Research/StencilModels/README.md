@@ -92,3 +92,49 @@ benchmarks. No CoreML conversion or new iPad integration has been performed.
 The next decision is which candidate the artist considers worth continuing.
 Any chosen model still needs source-overlay review, vector-path extraction,
 separate sparse shadow guides, CoreML conversion and on-device measurements.
+
+## Curve and guide candidate
+
+`stencil_layers.py` reuses saved style-1 confidence maps and source pixels;
+it does not reload or rerun any model. Run it after `compare.py`, then rebuild
+the review page:
+
+```powershell
+.\.tools\stencil-models\venv\Scripts\python.exe Research/StencilModels/stencil_layers.py Validation/Results/artist-examples
+.\.tools\stencil-models\venv\Scripts\python.exe Research/StencilModels/make_review.py Validation/Results/artist-examples
+.\.tools\stencil-models\venv\Scripts\python.exe -m unittest discover -s Research/StencilModels -p test_stencil_layers.py
+```
+
+The candidate follows ink crests with a small sampling tolerance at bends. A
+narrow-stroke top-hat can retain existing faint continuations only at a local
+cross-section maximum; it does not close white gaps. Whole-ribbon thinning was
+rejected during visual review because it created ladder-like connections around
+eyes and lips. The graph tracer retains loops, branches and short links between
+junctions. Source-coordinate polylines are simplified within 0.45 pixels and
+rounded with quadratic corners of at most 0.65 pixels. Open endpoints stay fixed.
+
+Shadow guides are a separate, **experimental** layer derived from broad source
+luminance gradients after bilateral/Gaussian smoothing. Proximity to structural
+ink, short fragments and light-background fades are rejected. They are not
+learned semantic shadow labels and still miss artist-selected volume guides.
+They are off by default in the review, and can be inspected without altering the
+structural layer. No extra controls have been added to the iPad app.
+
+Each `layers-v2/` folder contains `structure`, `guides` and `combined` SVG/PNG,
+source-coordinate `paths.json`, and a comparison sheet. SVG uses only opaque
+black strokes and a white background. PNG is strictly binary black/white,
+sampled at 3x analysis resolution; this is curve rendering, not new image detail.
+Guides are distinguished by dashes rather than gray pixels. The report records
+postprocessing CPU time separately; model inference and raster/vector export
+are excluded. This is still not an iPad latency measurement.
+
+Synthetic checks cover faint eyes, supported faint continuations, unsupported
+gaps, separate parallel strokes, loops, junction links, fixed endpoints, invalid
+inputs, blank sources, duplicate guides and binary/dashed output. They establish
+geometry invariants, not professional tattoo quality.
+
+Visual review on the five supplied collages shows more connected, scalable
+curves, but also remaining eye/lip clutter and paired sketch lines. Guide
+placement is not yet equivalent to the examples. This candidate remains outside
+the iPad app; it is not a release-quality stencil engine. The collages were used
+for local inference/comparison only, not training or numeric quality scoring.
