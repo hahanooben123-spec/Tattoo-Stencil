@@ -2,6 +2,13 @@ import XCTest
 @testable import StencilCore
 
 final class QualityAndResourceTests: XCTestCase {
+    func testGaussianWhiteMarginsStayValidAcrossPreviewScales() throws {
+        for sigma in [0.8,1.0666666667,1.6,3,3.2,3508.0/300] {
+            let pixels = try ScaleSpace.gaussian([Float](repeating: 1,count: 64),width: 8,height: 8,sigma: sigma)
+            XCTAssertTrue(pixels.allSatisfy { $0.isFinite && $0 >= 0 && $0 <= 1 },"Out-of-range white at sigma \(sigma): \(pixels[0])")
+            _ = try GrayImage(width: 8,height: 8,pixels: pixels)
+        }
+    }
     func testMaximumDetailDoesNotTurnPreviewTextureIntoContours() throws {
         let source = try image(320,200) { x,y in
             if x >= 240 { return 0.95 }

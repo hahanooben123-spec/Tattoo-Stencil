@@ -79,7 +79,7 @@ The root manifest deliberately builds only the portable engine, tests and valida
 
 ### Recorded verification
 
-- Swift 6.0.3 on Linux in the official `swift:6.0` Docker image: **66 tests passed, zero failures** on October 24, 2026. The Apple-only blank-image Vision smoke test is excluded on Linux. The macOS core tests and iOS simulator SDK typecheck also run in GitHub Actions.
+- Swift 6.0.3 on Linux in the official `swift:6.0` Docker image: **67 tests passed, zero failures** on October 24, 2026. The Apple-only blank-image Vision smoke test is excluded on Linux. The macOS core tests and iOS simulator SDK typecheck also run in GitHub Actions.
 - Tests cover invalid inputs, uniform-image behavior, bilateral preservation, step-edge alignment, histogram thresholds, region suppression, shared borders, closed contours, diagonal connectivity, simplification, deterministic output and cancellation.
 - All Swift files passed a Tree-sitter syntax parse. The separate `bash Tools/check-ios-sources.sh` check uses Apple's actual simulator SDK to emit the core module and typecheck the SwiftUI app sources; it does not build/sign an installable app or exercise the UI.
 - The release CLI processed an asymmetric synthetic geometry fixture; exported SVGs passed dimension, nonempty-layer, coordinate-bound and dash-style checks. This is a geometry smoke test, not a realism-quality evaluation.

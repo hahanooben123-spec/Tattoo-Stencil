@@ -13,7 +13,10 @@ enum ScaleSpace {
             for x in 0..<w {
                 var value: Float = 0
                 for k in -radius...radius { value += input[y*w + min(w-1, max(0, x+k))] * kernel[k+radius] }
-                temporary[y*w+x] = value
+                // Positive normalized weights preserve [0,1] mathematically,
+                // but Float summation can overshoot white (e.g. 1.0000002).
+                // Keep the filter's output valid for strict luminance images.
+                temporary[y*w+x] = min(1,max(0,value))
             }
         }
         for y in 0..<h {
@@ -21,7 +24,7 @@ enum ScaleSpace {
             for x in 0..<w {
                 var value: Float = 0
                 for k in -radius...radius { value += temporary[min(h-1, max(0, y+k))*w+x] * kernel[k+radius] }
-                output[y*w+x] = value
+                output[y*w+x] = min(1,max(0,value))
             }
         }
         return output
