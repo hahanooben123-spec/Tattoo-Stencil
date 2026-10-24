@@ -1,5 +1,9 @@
 # Local stencil model prototype
 
+The next supervised experiment is documented in [TRAINING-PILOT.md](TRAINING-PILOT.md).
+The local smoke run tests training mechanics only; no artist images have been
+used for training and no new quality candidate has been accepted.
+
 This is a separate research prototype. It does not replace the iPad app's engine.
 Inference runs entirely on the local CPU. There is no paid API, image upload,
 training job or hosted inference. Setup downloads public code/weights once.

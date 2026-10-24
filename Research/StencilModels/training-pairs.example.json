@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "scope": "artist-pairs",
+  "pairs": [
+    {
+      "name": "portrait-a",
+      "group": "composition-a",
+      "split": "train",
+      "source": "portrait-a/original.png",
+      "structure": "portrait-a/approved-lines.png",
+      "guides": null,
+      "aligned": false,
+      "artistApproved": false,
+      "regions": []
+    },
+    {
+      "name": "portrait-b",
+      "group": "composition-b",
+      "split": "validation",
+      "source": "portrait-b/original.png",
+      "structure": "portrait-b/approved-lines.png",
+      "guides": null,
+      "aligned": false,
+      "artistApproved": false,
+      "regions": []
+    }
+  ]
+}
