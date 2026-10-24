@@ -26,6 +26,7 @@ def main() -> None:
         labels = ["Reference"]+(["Current engine (no Vision)"] if (folder / "baseline.png").exists() else [])+models
         contact_sheet(folder, Image.open(folder / "reference.png"), labels)
         items.append({"name": record["name"], "reference": embedded(folder / "reference.png"),
+                      "target": embedded(folder / "artist-target.png") if (folder / "artist-target.png").exists() else None,
                       "baseline": embedded(folder / "baseline.png") if (folder / "baseline.png").exists() else None,
                       "models": {model: {"raw": embedded(folder / model / "raw.png"),
                                          "black": embedded(folder / model / "stencil.png"),
@@ -41,10 +42,11 @@ p{margin:6px 0;color:#555;max-width:950px;line-height:1.5}nav{display:flex;gap:1
 select,button{font:inherit;border:1px solid #aaa;border-radius:8px;padding:9px 12px;background:white;color:#222}
 button[aria-pressed=true]{background:#202b29;color:white;border-color:#202b29}main{padding:22px;max-width:1700px;margin:auto}
 .grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}article{background:white;padding:12px;border-radius:10px}
+.grid.with-target{grid-template-columns:repeat(4,minmax(0,1fr))}[hidden]{display:none!important}
 h2{font-size:15px;margin:0 0 10px}article img{display:block;width:100%;height:auto;cursor:zoom-in}
 .note{font-size:13px;margin-top:14px}dialog{border:0;max-width:97vw;max-height:97vh;padding:10px;background:white;border-radius:8px}
 dialog::backdrop{background:#000b}dialog img{display:block;max-height:88vh;max-width:92vw}#close{float:right;margin-bottom:8px}
-@media(max-width:800px){.grid{grid-template-columns:1fr}header{padding:18px}main{padding:12px}}
+@media(max-width:800px){.grid,.grid.with-target{grid-template-columns:1fr}header{padding:18px}main{padding:12px}}
 </style>
 <header><h1>Stencil · lokal modelprototype</h1>
 <p>Ingen billed-upload eller betalt API. Samme billedudsnit bruges til alle modeller. Ingen manuelt markerede øjne.</p>
@@ -54,18 +56,21 @@ dialog::backdrop{background:#000b}dialog img{display:block;max-height:88vh;max-w
 <option value="drawings-style2">Informative Drawings · stil 2</option></select>
 <button id="showBaseline" aria-pressed="false">Vis eksisterende motor</button></nav></header>
 <main><div class="grid"><article><h2>Reference · beskåret input</h2><img id="reference" alt="Reference"></article>
+<article id="targetPanel" hidden><h2>Eksempelstencil · kun til sammenligning</h2><img id="target" alt="Brugerens eksempelstencil"></article>
 <article><h2 id="middleTitle">Rå modelskitse</h2><img id="raw" alt="Modelskitse"></article>
 <article><h2>Sorte linjer · prototype</h2><img id="black" alt="Sort stencilprototype"></article></div>
 <p id="timing" class="note"></p>
 <p class="note">Tryk på et billede for større visning. Eksisterende motor er den portable Swift-motor uden Apple Vision.
-Det første input er et skærmfoto; det andet er et udsnit af højre side i dit stil-eksempel. Skærmreflekser og UI-symboler kan følge med.</p>
+Input er beskårne referencebilleder. Eksempelstenciler indgår ikke i modellernes input. Collagepaneler er ikke geometrisk registrerede træningspar; en tatovering på hud har også anden geometri. Reflekser, rammer og UI-symboler kan følge med.</p>
 <p class="note">Prototype til vurdering. Genererede streger kan afvige fra originalens former. Øjne, placering og overførselsværdi er ikke godkendt af en tatovør. Ingen model er indbygget i iPad-appen endnu.</p></main>
 <dialog id="zoom"><button id="close">Luk</button><img id="large" alt="Forstørret visning"></dialog>
 <script>const items=__DATA__;const $=id=>document.getElementById(id);let baseline=false;
-items.forEach((v,i)=>{const o=document.createElement('option');o.value=i;o.textContent=v.name==='target-art'?'Dit mål · motivudsnit':'Det tidligere portræt · skærmfoto';$('image').append(o)});
-$('image').value=items.findIndex(v=>v.name==='target-art');
+items.forEach((v,i)=>{const o=document.createElement('option');o.value=i;o.textContent=v.name;$('image').append(o)});
+$('image').value=Math.max(0,items.findIndex(v=>v.name==='target-art'));
 function update(){const item=items[Number($('image').value)],model=item.models[$('model').value],showBaseline=baseline&&!!item.baseline;
 $('reference').src=item.reference;$('raw').src=showBaseline?item.baseline:model.raw;$('black').src=model.black;
+$('targetPanel').hidden=!item.target;document.querySelector('.grid').classList.toggle('with-target',!!item.target);
+if(item.target){$('target').src=item.target}else{$('target').removeAttribute('src')}
 $('middleTitle').textContent=showBaseline?'Eksisterende motor · uden Vision':'Rå modelskitse';
 $('showBaseline').disabled=!item.baseline;$('showBaseline').setAttribute('aria-pressed',showBaseline);
 $('timing').textContent='En lokal CPU-kørsel: '+model.cpuSeconds.toFixed(2)+' sek. for modelberegning. Modelindlæsning, oprydning og filskrivning er ikke medregnet. Dette er ikke en iPad-måling.';}
