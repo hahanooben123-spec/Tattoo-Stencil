@@ -48,7 +48,12 @@ func processStencil(_ input: GrayImage, parameters p: Parameters, limits: Proces
     if let saved = cache.tones, saved.0 == toneKey {
         segmentation = saved.1; statistics.reused.append("tones")
     } else {
-        segmentation = try TonalSegmentationEngine().segment(image,levels: p.tonalLevels,minimumArea: p.minimumRegionArea,
+        // Shadow guides describe broad tone masses, not individual fur/skin
+        // fluctuations. Fine source coordinates remain in the outline stage.
+        let tonePixels = try ScaleSpace.gaussian(image.pixels,width: image.width,height: image.height,
+                                                 sigma: max(0.8,3*Double(max(image.width,image.height))/900))
+        let toneImage = try GrayImage(width: image.width,height: image.height,pixels: tonePixels)
+        segmentation = try TonalSegmentationEngine().segment(toneImage,levels: p.tonalLevels,minimumArea: p.minimumRegionArea,
                                                              coherence: p.regionCoherence,limits: limits)
         cache.tones = (toneKey,segmentation); statistics.computed.append("tones")
     }

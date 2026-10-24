@@ -61,7 +61,7 @@ Confirm that the normal workspace shows only Detaljer, Hovedkontur and Skygger f
 
 ## Continuous slider validation
 
-Run `swift run -c release stencil-preview-bench 20` to measure the synthetic CPU sweeps. The local Linux run measured median/p95 of approximately 10.0/10.4 ms for 320-pixel detail changes, 5.1/5.6 ms for shadow changes, and 76/88 ms for fresh 900-pixel processing. These exclude Vision, facial guidance, UI scheduling, prepared-path generation and display rendering. They are not iPad FPS or end-to-end latency claims.
+Run `swift run -c release stencil-preview-bench 20` to measure the synthetic CPU sweeps. The local Linux run measured median/p95 of approximately 12.6/13.8 ms for 320-pixel detail changes, 6.4/7.3 ms for shadow changes, and 116/121 ms for fresh 900-pixel processing. These exclude Vision, facial guidance, UI scheduling, prepared-path generation and display rendering. They are not iPad FPS or end-to-end latency claims.
 
 `InteractivePreviewTests` compares cached outputs against fresh processing across parameter changes; validates presentation-only reuse, shadow-stage reuse, full invalidation on preprocessing changes, mask/source/resolution isolation, cancellation/clear behavior, and the lookup filter against its exact numerical reference.
 
@@ -78,3 +78,9 @@ The workspace photograph reported missing facial details amid many short tonal s
 The eleven `FacialFeatureTests` verify coordinate conversion, source-aligned recovery of short weak strokes, preservation under strong smoothing, no invented lines on flat/smooth inputs, rejection of unrelated short noise, high-detail recovery without Vision, feature-map scaling, independent shadow-length controls, and preprocessing/outline cache invalidation for both region and detail changes. Near-neighbor contrast now supplements the wider contrast measurement, which could previously cancel across both sides of a thin line. Shadow fragments retain their own length floor when outline detail increases.
 
 On device, test human portraits with weak eyelids/lips, masked or stylized faces, multiple faces, statues and non-face subjects. Record whether the status reports facial prioritization, compare focus enabled/disabled, inspect eye/nose/lip alignment at native resolution, and confirm background faces are excluded when selecting another subject. Review noise around skin and eyebrows and whether primary emphasis is useful. Repeat slider timing with facial guidance active; the existing CLI benchmark omits it. Confirm face inference occurs only once per source/selection and cached regions apply consistently to preview and export.
+
+## Fur texture correction
+
+The wolf workspace photograph showed dense fur strokes overwhelming the subject. Structural blur now follows image dimensions rather than native sampling scale, with a useful minimum for small previews. Repeated texture with little coarse support is rejected unless it is an isolated strong fine stroke, a guided facial feature or a subject boundary. Detail no longer weakens texture suppression. Ordinary contour length and simple-control denoising retain conservative floors even at maximum detail. Tone segmentation now operates on a separately smoothed image to avoid tracing each small fur fluctuation as a shadow guide.
+
+A targeted regression reproduces the reported 2480 × 3508 import scale with maximum detail: repeated texture is reduced by more than 75% versus texture suppression disabled, while the strong source boundary remains. This is synthetic evidence, not a measured result on the wolf reference; the user will test the actual image on iPad. The historical geometry-fixture timings and agreement above predate this correction.

@@ -72,7 +72,7 @@ final class FacialFeatureTests: XCTestCase {
     func testShadowLengthsStayIndependentOfFineOutlineDetail() throws {
         var controls = StencilControls(); controls.detail = 1
         let p = try controls.parameters(width: 900,height: 600)
-        XCTAssertLessThanOrEqual(p.minimumContourLength,4)
+        XCTAssertEqual(p.minimumContourLength,12)
         XCTAssertGreaterThanOrEqual(p.minimumShadowContourLength,24)
         let scaled = try p.forPreview(scale: 0.5)
         XCTAssertEqual(scaled.minimumShadowContourLength,p.minimumShadowContourLength*0.5)

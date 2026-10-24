@@ -12,10 +12,16 @@ public struct StructuralEdgeDetector: Sendable {
         let a = image.pixels
         let featureMap = try guidance?.featureMap(width: w,height: h)
         if w < 3 || h < 3 { return [UInt8](repeating: 0, count: n) }
-        let coarse = try ScaleSpace.gaussian(a, width: w, height: h, sigma: max(0.55, 1.6 * p.samplingScale))
-        let means = try ScaleSpace.mean(a, width: w, height: h, radius: max(1, Int((5 * p.samplingScale).rounded())))
+        // Structural scale belongs to the displayed image, not native-pixel
+        // samplingScale. Multiplying by the preview scale made the old coarse
+        // image almost identical to the fine image on large imported references.
+        let unit = Double(max(w,h))/900
+        let coarse = try ScaleSpace.gaussian(a, width: w, height: h, sigma: max(1.6, 3.2 * unit))
+        let residual = zip(a,coarse).map { abs($0-$1) }
+        let texture = try ScaleSpace.mean(residual,width: w,height: h,radius: max(3,Int((7*unit).rounded())))
+        let means = try ScaleSpace.mean(a, width: w, height: h, radius: max(2, Int((5 * unit).rounded())))
         let deviation = zip(a, means).map { abs($0 - $1) }
-        let localContrast = try ScaleSpace.mean(deviation, width: w, height: h, radius: max(1, Int((3 * p.samplingScale).rounded())))
+        let localContrast = try ScaleSpace.mean(deviation, width: w, height: h, radius: max(1, Int((3 * unit).rounded())))
         var support = [Float](repeating: 0, count: n)
         for y in 1..<(h - 1) {
             try Task.checkCancellation()
@@ -42,7 +48,12 @@ public struct StructuralEdgeDetector: Sendable {
                 let nearSubject = guidance?.boundary(x: x,y: y,width: w,height: h) ?? false
                 let feature = featureMap?[i] == 1
                 if let guidance, !nearSubject && !feature && guidance.value(x: x,y: y,width: w,height: h) < 0.15 { continue }
-                let penalty = p.textureSuppression * (1 - support[i]) * (1 - 0.65 * p.detail)
+                // Repeated fur/skin texture disappears at the structural scale.
+                // An isolated strong fine line (eyelid, whisker, leaf vein) may
+                // survive without coarse support, unlike dense repeated marks.
+                let isolated = m >= max(0.18,texture[i]*4.5)
+                if p.textureSuppression >= 0.5 && !feature && !nearSubject && support[i] < 0.45 && !isolated { continue }
+                let penalty = p.textureSuppression * (1 - support[i])
                 let score = m * (1 - penalty)
                 let contrastFloor: Float = 0.008 + (1 - p.detail) * 0.035
                 var localHigh = nearSubject ? high * 0.55 : high

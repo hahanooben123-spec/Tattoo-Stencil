@@ -13,9 +13,9 @@ public struct StencilControls: Sendable, Equatable {
         let unit = max(1,Double(max(width,height))/900)
         var p = Parameters()
         p.detail = detail; p.outlineEmphasis = outlineEmphasis
-        p.noiseReduction = 0.65-0.3*detail; p.textureSuppression = 0.95-0.4*detail
+        p.noiseReduction = 0.7-0.15*detail; p.textureSuppression = 0.95-0.15*detail
         p.edgeThreshold = 0.19-0.08*detail
-        p.minimumContourLength = (4+Double(1-detail)*16)*unit
+        p.minimumContourLength = (12+Double(1-detail)*20)*unit
         p.minimumShadowContourLength = (24+Double(1-shadows)*24)*unit
         p.minimumRegionArea = max(64,Int(Double(width*height)*(0.0002+Double(1-shadows)*0.0008)))
         p.minimumHighlightArea = p.minimumRegionArea

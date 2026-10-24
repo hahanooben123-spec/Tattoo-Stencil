@@ -2,6 +2,20 @@ import XCTest
 @testable import StencilCore
 
 final class QualityAndResourceTests: XCTestCase {
+    func testMaximumDetailDoesNotTurnPreviewTextureIntoContours() throws {
+        let source = try image(320,200) { x,y in
+            if x >= 240 { return 0.95 }
+            return 0.5 + 0.12*sin(Float(x)*2*Float.pi/5 + Float(y)*0.18)
+        }
+        var controls = StencilControls(); controls.detail = 1
+        let p = try controls.parameters(width: 2480,height: 3508).forPreview(scale: 320.0/3508)
+        let selected = try StructuralEdgeDetector().detect(source,parameters: p)
+        var unrestricted = p; unrestricted.textureSuppression = 0
+        let raw = try StructuralEdgeDetector().detect(source,parameters: unrestricted)
+        let texture = selected.indices.filter { $0 % 320 < 220 }
+        XCTAssertLessThan(texture.reduce(0) { $0+Int(selected[$1]) },texture.reduce(0) { $0+Int(raw[$1]) }/4)
+        XCTAssertGreaterThan((1..<199).reduce(0) { $0+Int(selected[$1*320+239])+Int(selected[$1*320+240]) },160)
+    }
     func image(_ w: Int, _ h: Int, _ pixel: (Int,Int) -> Float) throws -> GrayImage {
         try GrayImage(width: w, height: h, pixels: (0..<h).flatMap { y in (0..<w).map { pixel($0,y) } })
     }
