@@ -39,7 +39,7 @@ public struct ImagePreprocessor: Sendable {
                     let filtered = sum/weights
                     // Thin low-contrast facial lines must survive smoothing before
                     // edge selection gets a chance to protect them.
-                    let preserve = features?[y*w+x] == 1 ? 0.7+0.25*Double(p.detail) : 0
+                    let preserve = features?[y*w+x] == 1 ? 0.45+0.35*Double(p.detail) : 0
                     output[y*w+x] = Float(filtered*(1-preserve)+center*preserve)
                 }
             }

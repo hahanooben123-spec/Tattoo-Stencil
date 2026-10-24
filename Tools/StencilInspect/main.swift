@@ -80,13 +80,18 @@ func svg(_ result: StencilResult, only: LayerKind? = nil) -> String {
 
 do {
     let args = CommandLine.arguments
-    guard args.count == 3 || args.count == 4 else { throw InspectionError.usage }
-    let previewSize = args.count == 4 ? Int(args[3]) ?? 0 : 900
+    guard (3...5).contains(args.count), args.count < 5 || ["studio","studio-detailed"].contains(args[4]) else { throw InspectionError.usage }
+    let previewSize = args.count >= 4 ? Int(args[3]) ?? 0 : 900
     guard (2...1200).contains(previewSize) else { throw InspectionError.usage }
     let source = try readPGM(URL(fileURLWithPath: args[1]))
     let folder = URL(fileURLWithPath: args[2], isDirectory: true)
     try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
     var p = Parameters(); p.highlightsEnabled = true
+    if args.count == 5 {
+        var controls = StencilControls()
+        if args[4] == "studio-detailed" { controls.detail = 1; controls.shadows = 0.8 }
+        p = try controls.parameters(width: source.width,height: source.height)
+    }
     let start = ProcessInfo.processInfo.systemUptime
     let stages = StageMetrics()
     let result = try StencilProcessingCoordinator().process(source, parameters: p) { fraction, stage in stages.checkpoint(fraction, stage) }
@@ -124,6 +129,6 @@ do {
     try json.write(to: folder.appendingPathComponent("metrics.json"))
     print(String(decoding: json, as: UTF8.self))
 } catch {
-    FileHandle.standardError.write(Data("Inspection failed: \(error). Usage: stencil-inspect reference.pgm output-directory [preview-longest-side]\n".utf8))
+    FileHandle.standardError.write(Data("Inspection failed: \(error). Usage: stencil-inspect reference.pgm output-directory [preview-longest-side] [studio|studio-detailed]\n".utf8))
     exit(1)
 }

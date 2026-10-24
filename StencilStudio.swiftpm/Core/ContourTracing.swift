@@ -113,11 +113,12 @@ public struct ShadowBoundaryGenerator: Sendable {
     public func generate(_ segmentation: Segmentation, width: Int, height: Int, sensitivity: Float,
                          maximumLinks: Int = 400_000) throws -> [Contour] {
         let centers = segmentation.centers
-        // Similar neighboring clusters can be ignored without suppressing deeper transitions.
-        let minimumDifference = 0.02 + (1 - sensitivity) * 0.14
-        return try regionBoundaries(segmentation.labels, width: width, height: height, maximumLinks: maximumLinks) { a, b in
-            abs(centers[Int(a)] - centers[Int(b)]) >= minimumDifference
-        }
+        guard let dark = centers.min(),let light = centers.max(),light-dark >= 0.02 else { return [] }
+        // One separating boundary around darker masses. Tracing every adjacent
+        // tone class drew nested rings around noses, lips and shaded cheeks.
+        let cutoff = dark+(light-dark)*(0.25+0.25*sensitivity)
+        let grouped = segmentation.labels.map { UInt8(centers[Int($0)] <= cutoff ? 0 : 1) }
+        return try regionBoundaries(grouped,width: width,height: height,maximumLinks: maximumLinks) { _,_ in true }
     }
 }
 

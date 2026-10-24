@@ -58,7 +58,7 @@ public struct StructuralEdgeDetector: Sendable {
                 let contrastFloor: Float = 0.008 + (1 - p.detail) * 0.035
                 var localHigh = nearSubject ? high * 0.55 : high
                 if feature {
-                    localHigh = min(localHigh*0.4,max(0.012,localContrast[i]*0.8))
+                    localHigh = min(localHigh*0.65,max(0.025,localContrast[i]*1.5))
                 } else if p.detail > 0.65 && support[i] > 0.55 {
                     // Coherent low-contrast details should not need a global dark/light
                     // jump. A minimum absolute gradient still excludes flat gradients.

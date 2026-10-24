@@ -2,6 +2,24 @@ import XCTest
 @testable import StencilCore
 
 final class QualityAndResourceTests: XCTestCase {
+    func testShadowGuideSeparatesDarkMassOnceInsteadOfTracingEveryToneBand() throws {
+        let labels = (0..<40*24).map { UInt8(($0 % 40)/10) }
+        let segmentation = Segmentation(labels: labels,thresholds: [0.2,0.5,0.8],centers: [0.1,0.3,0.7,0.9])
+        let paths = try ShadowBoundaryGenerator().generate(segmentation,width: 40,height: 24,sensitivity: 0.5)
+        XCTAssertEqual(paths.count,1)
+        XCTAssertTrue(paths[0].points.allSatisfy { $0.x == 20 })
+    }
+    func testInkSelectionDropsParallelDuplicateButPreservesCrossingAndCoordinates() throws {
+        let reference = try image(900,100) { x,y in x < 201 && y < 50 ? 0.1 : 0.9 }
+        let main = Contour(points: [Point(200.5,5.5),Point(200.5,94.5)],isPrimary: true)
+        let duplicate = Contour(points: [Point(201.5,5.5),Point(201.5,94.5)])
+        let crossing = Contour(points: [Point(150.5,49.5),Point(250.5,49.5)])
+        var p = Parameters(); p.textureSuppression = 0.9
+        let result = try ContourInkSelector().select([main,duplicate,crossing],image: reference,parameters: p)
+        XCTAssertEqual(result.map(\.points),[main.points,crossing.points])
+        p.textureSuppression = 0
+        XCTAssertEqual(try ContourInkSelector().select([main,duplicate,crossing],image: reference,parameters: p).count,3)
+    }
     func testGaussianWhiteMarginsStayValidAcrossPreviewScales() throws {
         for sigma in [0.8,1.0666666667,1.6,3,3.2,3508.0/300] {
             let pixels = try ScaleSpace.gaussian([Float](repeating: 1,count: 64),width: 8,height: 8,sigma: sigma)

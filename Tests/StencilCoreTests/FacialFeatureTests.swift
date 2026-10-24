@@ -2,6 +2,19 @@ import XCTest
 @testable import StencilCore
 
 final class FacialFeatureTests: XCTestCase {
+    func testLandmarkPriorityFollowsFeatureBoundaryInsteadOfWholeRectangle() throws {
+        let region = try FeatureRegion(kind: .mouth,minX: 0.2,minY: 0.2,maxX: 0.8,maxY: 0.8,
+                                       landmarks: [Point(0.3,0.5),Point(0.5,0.3),Point(0.7,0.5),Point(0.5,0.7)],
+                                       supportRadius: 0.025,closed: true)
+        XCTAssertTrue(region.contains(x: 0.4,y: 0.4))
+        XCTAssertFalse(region.contains(x: 0.5,y: 0.5))
+        XCTAssertFalse(region.contains(x: 0.25,y: 0.25))
+        let guidance = SubjectGuidance(mask: try source { _,_ in 1 },features: [region])
+        let map = try XCTUnwrap(guidance.featureMap(width: 160,height: 120))
+        XCTAssertEqual(map[60*160+80],0)
+        let result = try StencilProcessingCoordinator().process(source { _,_ in 0.5 },parameters: Parameters(),guidance: guidance)
+        XCTAssertTrue(result.outlines.isEmpty)
+    }
     func source(_ pixel: (Int,Int) -> Float) throws -> GrayImage {
         try GrayImage(width: 160,height: 120,pixels: (0..<19200).map { pixel($0 % 160,$0 / 160) })
     }

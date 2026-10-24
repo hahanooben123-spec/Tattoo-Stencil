@@ -39,17 +39,17 @@ public enum AppleSubjectDetector {
             var regions: [FeatureRegion] = []
             for face in (request.results ?? []).prefix(8) {
                 guard face.confidence >= 0.5,let landmarks = face.landmarks else { continue }
-                let candidates: [(FacialFeature,VNFaceLandmarkRegion2D?)] = [
-                    (.eye,landmarks.leftEye),(.eye,landmarks.rightEye),(.eyebrow,landmarks.leftEyebrow),
-                    (.eyebrow,landmarks.rightEyebrow),(.nose,landmarks.nose),(.nose,landmarks.noseCrest),
-                    (.mouth,landmarks.outerLips),(.mouth,landmarks.innerLips)
+                let candidates: [(FacialFeature,VNFaceLandmarkRegion2D?,Bool)] = [
+                    (.eye,landmarks.leftEye,true),(.eye,landmarks.rightEye,true),(.eyebrow,landmarks.leftEyebrow,false),
+                    (.eyebrow,landmarks.rightEyebrow,false),(.nose,landmarks.nose,true),(.nose,landmarks.noseCrest,false),
+                    (.mouth,landmarks.outerLips,true),(.mouth,landmarks.innerLips,true)
                 ]
-                for (kind,landmark) in candidates {
+                for (kind,landmark,closed) in candidates {
                     guard let landmark,landmark.pointCount > 1 else { continue }
                     let points = landmark.normalizedPoints.map { Point(Double($0.x),Double($0.y)) }
                     let box = face.boundingBox
                     if let region = try? FeatureRegion.fromVisionPoints(kind: kind,points: points,
-                                                                       faceX: box.minX,faceY: box.minY,faceWidth: box.width,faceHeight: box.height) {
+                                                                       faceX: box.minX,faceY: box.minY,faceWidth: box.width,faceHeight: box.height,closed: closed) {
                         regions.append(region)
                     }
                 }

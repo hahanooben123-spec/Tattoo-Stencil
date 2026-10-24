@@ -40,7 +40,8 @@ func processStencil(_ input: GrayImage, parameters p: Parameters, limits: Proces
         edges = try StructuralEdgeDetector().detect(image,parameters: p,guidance: guidance)
         let traced = try StructuralContourTracer().traceEdges(edges,width: image.width,height: image.height,maximumLinks: limits.maximumGraphLinks)
         let ranked = try MainContourSelector().classify(traced,image: image,guidance: guidance)
-        outlines = try optimizer.optimize(ranked,minimumLength: p.minimumContourLength,tolerance: p.smoothing)
+        let simplified = try optimizer.optimize(ranked,minimumLength: p.minimumContourLength,tolerance: p.smoothing)
+        outlines = try ContourInkSelector().select(simplified,image: image,parameters: p)
         cache.outlines = (outlineKey,edges,outlines); statistics.computed.append("outlines")
     }
     progress(0.55,"Adaptive tonal regions")
