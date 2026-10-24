@@ -21,6 +21,18 @@ public struct FeatureRegion: Sendable, Equatable {
     public func contains(x: Double,y: Double) -> Bool {
         guard x >= minX && x <= maxX && y >= minY && y <= maxY else { return false }
         guard !landmarks.isEmpty else { return true }
+        // The iris and pupil lie inside the eyelid polygon, not on its perimeter.
+        // Protect that aperture while leaving surrounding skin outside the band.
+        if kind == .eye && closed && landmarks.count >= 3 {
+            var inside = false
+            var previous = landmarks.count-1
+            for current in landmarks.indices {
+                let a = landmarks[previous], b = landmarks[current]
+                if (a.y > y) != (b.y > y),x < (b.x-a.x)*(y-a.y)/(b.y-a.y)+a.x { inside.toggle() }
+                previous = current
+            }
+            if inside { return true }
+        }
         let segments = closed ? landmarks.count : landmarks.count-1
         for i in 0..<segments {
             let a = landmarks[i], b = landmarks[(i+1) % landmarks.count]
@@ -56,7 +68,7 @@ extension SubjectGuidance {
             for y in top...bottom {
                 if y % 64 == 0 { try Task.checkCancellation() }
                 for x in left...right where region.contains(x: (Double(x)+0.5)/Double(width),y: (Double(y)+0.5)/Double(height)) {
-                    map[y*width+x] = 1
+                    map[y*width+x] = max(map[y*width+x],region.kind == .eye ? 2 : 1)
                 }
             }
         }

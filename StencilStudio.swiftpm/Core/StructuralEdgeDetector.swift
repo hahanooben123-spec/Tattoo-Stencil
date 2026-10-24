@@ -46,18 +46,21 @@ public struct StructuralEdgeDetector: Sendable {
             for x in 1..<(w - 1) {
                 let i = y * w + x, m = magnitude[i], d = offsets[Int(direction[i])]
                 let nearSubject = guidance?.boundary(x: x,y: y,width: w,height: h) ?? false
-                let feature = featureMap?[i] == 1
+                let eye = featureMap?[i] == 2
+                let feature = (featureMap?[i] ?? 0) != 0
                 if let guidance, !nearSubject && !feature && guidance.value(x: x,y: y,width: w,height: h) < 0.15 { continue }
                 // Repeated fur/skin texture disappears at the structural scale.
                 // An isolated strong fine line (eyelid, whisker, leaf vein) may
                 // survive without coarse support, unlike dense repeated marks.
                 let isolated = m >= max(0.18,texture[i]*4.5)
                 if p.textureSuppression >= 0.5 && !feature && !nearSubject && support[i] < 0.45 && !isolated { continue }
-                let penalty = p.textureSuppression * (1 - support[i])
+                let penalty = p.textureSuppression * (1 - support[i]) * (eye ? 0.1 : 1)
                 let score = m * (1 - penalty)
                 let contrastFloor: Float = 0.008 + (1 - p.detail) * 0.035
                 var localHigh = nearSubject ? high * 0.55 : high
-                if feature {
+                if eye {
+                    localHigh = min(localHigh*0.5,max(0.012,localContrast[i]*0.8))
+                } else if feature {
                     localHigh = min(localHigh*0.65,max(0.025,localContrast[i]*1.5))
                 } else if p.detail > 0.65 && support[i] > 0.55 {
                     // Coherent low-contrast details should not need a global dark/light

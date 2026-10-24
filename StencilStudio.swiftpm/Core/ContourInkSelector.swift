@@ -31,7 +31,10 @@ struct ContourInkSelector {
             let score = (0.025+strength)*sqrt(min(path.length,dimension*0.25)/dimension)*role/max(1,winding/3)
             ranked.append((index,score))
         }
-        ranked.sort { $0.score == $1.score ? $0.index < $1.index : $0.score > $1.score }
+        ranked.sort {
+            if paths[$0.index].isFeature != paths[$1.index].isFeature { return paths[$0.index].isFeature }
+            return $0.score == $1.score ? $0.index < $1.index : $0.score > $1.score
+        }
         var kept = Set<Int>()
         for item in ranked {
             try Task.checkCancellation()
@@ -54,7 +57,9 @@ struct ContourInkSelector {
             // Crossings are fine. A mostly parallel duplicate loses as a whole.
             guard Double(covered)/Double(samples.count) < 0.35 else { continue }
             kept.insert(item.index)
-            let radius = max(0.65,(1+2*Double(p.textureSuppression))*unit*(path.isFeature ? 0.7 : 1))
+            // A narrow pupil/iris must coexist with its eyelids. Protected facial
+            // paths only reject almost identical traces, not adjacent anatomy.
+            let radius = path.isFeature ? max(0.5,0.55*unit) : max(0.65,(1+2*Double(p.textureSuppression))*unit)
             let r = Int(ceil(radius))
             for (index,sample) in samples.enumerated() {
                 if index % 4096 == 0 { try Task.checkCancellation() }

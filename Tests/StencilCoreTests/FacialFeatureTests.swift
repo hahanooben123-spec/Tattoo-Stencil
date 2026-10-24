@@ -2,6 +2,30 @@ import XCTest
 @testable import StencilCore
 
 final class FacialFeatureTests: XCTestCase {
+    func testEyeApertureIncludesIrisButExcludesSurroundingSkin() throws {
+        let eye = try FeatureRegion(kind: .eye,minX: 0.2,minY: 0.2,maxX: 0.8,maxY: 0.8,
+                                    landmarks: [Point(0.3,0.5),Point(0.5,0.3),Point(0.7,0.5),Point(0.5,0.7)],
+                                    supportRadius: 0.01,closed: true)
+        XCTAssertTrue(eye.contains(x: 0.5,y: 0.5))
+        XCTAssertFalse(eye.contains(x: 0.25,y: 0.25))
+    }
+    func testShortEyeStrokeSurvivesStrongTextureSuppression() throws {
+        let reference = try source { x,y in (70...78).contains(x) && y == 50 ? 0.31 : 0.25 }
+        let guidance = SubjectGuidance(mask: try source { _,_ in 1 },features: [try eyeRegion()])
+        var p = Parameters(); p.textureSuppression = 0.95; p.noiseReduction = 0.65; p.minimumContourLength = 40
+        let output = try StencilProcessingCoordinator().process(reference,parameters: p,guidance: guidance)
+        XCTAssertTrue(output.outlines.contains { $0.isFeature && $0.length < 40 })
+    }
+    func testEyeAndSmallIrisAreNotDeletedByNearbyContours() throws {
+        let reference = try GrayImage(width: 900,height: 100,pixels: [Float](repeating: 0.5,count: 90000))
+        let lid = Contour(points: [Point(200.5,40.5),Point(208.5,40.5),Point(208.5,46.5),Point(200.5,46.5)],closed: true,isPrimary: true,isFeature: true)
+        let iris = Contour(points: [Point(204.5,41.5),Point(206.5,43.5),Point(204.5,45.5),Point(202.5,43.5)],closed: true,isPrimary: true,isFeature: true)
+        let brow = Contour(points: [Point(150.5,39.5),Point(260.5,39.5)],isPrimary: true)
+        var p = Parameters(); p.textureSuppression = 0.95
+        let output = try ContourInkSelector().select([brow,lid,iris],image: reference,parameters: p)
+        XCTAssertTrue(output.contains { $0.points == lid.points })
+        XCTAssertTrue(output.contains { $0.points == iris.points })
+    }
     func testLandmarkPriorityFollowsFeatureBoundaryInsteadOfWholeRectangle() throws {
         let region = try FeatureRegion(kind: .mouth,minX: 0.2,minY: 0.2,maxX: 0.8,maxY: 0.8,
                                        landmarks: [Point(0.3,0.5),Point(0.5,0.3),Point(0.7,0.5),Point(0.5,0.7)],
@@ -79,7 +103,7 @@ final class FacialFeatureTests: XCTestCase {
         let mask = try GrayImage(width: 16,height: 12,pixels: [Float](repeating: 1,count: 192))
         let guidance = SubjectGuidance(mask: mask,features: [try eyeRegion()])
         let map = try XCTUnwrap(guidance.featureMap(width: 160,height: 120))
-        XCTAssertEqual(map[50*160+75],1)
+        XCTAssertNotEqual(map[50*160+75],0)
         XCTAssertEqual(map[90*160+75],0)
     }
     func testShadowLengthsStayIndependentOfFineOutlineDetail() throws {
