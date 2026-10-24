@@ -13,17 +13,21 @@ public struct PreviewFrame: Sendable {
 }
 
 struct PreprocessKey: Equatable {
-    let noise: Float, contrast: Float
+    let noise: Float, contrast: Float, featureDetail: Float
     let scale: Double
-    init(_ p: Parameters) { noise = p.noiseReduction; contrast = p.contrast; scale = p.samplingScale }
+    let features: [FeatureRegion]
+    init(_ p: Parameters,features: [FeatureRegion] = []) {
+        noise = p.noiseReduction; contrast = p.contrast; scale = p.samplingScale; self.features = features
+        featureDetail = features.isEmpty ? 0 : p.detail
+    }
 }
 struct OutlineKey: Equatable {
     let image: PreprocessKey
     let detail: Float, texture: Float, threshold: Float
     let length: Double, smoothing: Double
     let guidance: UUID
-    init(_ p: Parameters,_ guidance: UUID) {
-        image = PreprocessKey(p); detail = p.detail; texture = p.textureSuppression; threshold = p.edgeThreshold
+    init(_ p: Parameters,_ guidance: UUID,image: PreprocessKey) {
+        self.image = image; detail = p.detail; texture = p.textureSuppression; threshold = p.edgeThreshold
         length = p.minimumContourLength; smoothing = p.smoothing; self.guidance = guidance
     }
 }
@@ -31,7 +35,7 @@ struct ToneKey: Equatable {
     let image: PreprocessKey
     let levels: Int, area: Int
     let coherence: Float
-    init(_ p: Parameters) { image = PreprocessKey(p); levels = p.tonalLevels; area = p.minimumRegionArea; coherence = p.regionCoherence }
+    init(_ p: Parameters,image: PreprocessKey) { self.image = image; levels = p.tonalLevels; area = p.minimumRegionArea; coherence = p.regionCoherence }
 }
 struct ShadowKey: Equatable {
     let tones: ToneKey
@@ -40,10 +44,10 @@ struct ShadowKey: Equatable {
     let enabled: Bool
     let sensitivity: Float
     let spacing: Double, length: Double, smoothing: Double
-    init(_ p: Parameters,_ guidance: UUID) {
-        tones = ToneKey(p); outlines = p.suppressOutlineDuplicates ? OutlineKey(p,guidance) : nil
+    init(_ p: Parameters,_ guidance: UUID,image: PreprocessKey) {
+        tones = ToneKey(p,image: image); outlines = p.suppressOutlineDuplicates ? OutlineKey(p,guidance,image: image) : nil
         self.guidance = guidance; enabled = p.shadowsEnabled; sensitivity = p.shadowSensitivity
-        spacing = p.shadowSpacing; length = p.minimumContourLength; smoothing = p.smoothing
+        spacing = p.shadowSpacing; length = max(p.minimumContourLength,p.minimumShadowContourLength); smoothing = p.smoothing
     }
 }
 struct HighlightKey: Equatable {
@@ -53,8 +57,8 @@ struct HighlightKey: Equatable {
     let sensitivity: Float
     let area: Int
     let length: Double, smoothing: Double
-    init(_ p: Parameters,_ guidance: UUID) {
-        image = PreprocessKey(p); self.guidance = guidance; enabled = p.highlightsEnabled
+    init(_ p: Parameters,_ guidance: UUID,image: PreprocessKey) {
+        self.image = image; self.guidance = guidance; enabled = p.highlightsEnabled
         sensitivity = p.highlightSensitivity; area = p.minimumHighlightArea
         length = p.minimumContourLength; smoothing = p.smoothing
     }

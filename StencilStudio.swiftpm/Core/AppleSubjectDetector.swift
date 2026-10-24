@@ -15,6 +15,51 @@ public struct SubjectAnalysis: Sendable {
 @available(iOS 17, macOS 14, *)
 public enum AppleSubjectDetector {
     public static func detect(_ image: CGImage, point: Point?) throws -> SubjectAnalysis {
+        let features = try facialFeatures(image)
+        let subject = try detectSubject(image,point: point)
+        guard !features.isEmpty else { return subject }
+        let mask = try subject.guidance?.mask ?? GrayImage(width: image.width,height: image.height,
+                                                          pixels: [Float](repeating: 1,count: image.width*image.height))
+        let guidance = SubjectGuidance(mask: mask)
+        let selected = features.filter { region in
+            guidance.value(x: Int((region.minX+region.maxX)*0.5*Double(image.width)),
+                           y: Int((region.minY+region.maxY)*0.5*Double(image.height)),width: image.width,height: image.height) >= 0.25
+        }
+        guard !selected.isEmpty else { return subject }
+        return SubjectAnalysis(guidance: SubjectGuidance(mask: mask,features: selected),
+                               message: subject.message+" · ansigtsdetaljer prioriteret")
+    }
+
+    private static func facialFeatures(_ image: CGImage) throws -> [FeatureRegion] {
+        try Task.checkCancellation()
+        let request = VNDetectFaceLandmarksRequest()
+        do {
+            try VNImageRequestHandler(cgImage: image,orientation: .up,options: [:]).perform([request])
+            try Task.checkCancellation()
+            var regions: [FeatureRegion] = []
+            for face in (request.results ?? []).prefix(8) {
+                guard face.confidence >= 0.5,let landmarks = face.landmarks else { continue }
+                let candidates: [(FacialFeature,VNFaceLandmarkRegion2D?)] = [
+                    (.eye,landmarks.leftEye),(.eye,landmarks.rightEye),(.eyebrow,landmarks.leftEyebrow),
+                    (.eyebrow,landmarks.rightEyebrow),(.nose,landmarks.nose),(.nose,landmarks.noseCrest),
+                    (.mouth,landmarks.outerLips),(.mouth,landmarks.innerLips)
+                ]
+                for (kind,landmark) in candidates {
+                    guard let landmark,landmark.pointCount > 1 else { continue }
+                    let points = landmark.normalizedPoints.map { Point(Double($0.x),Double($0.y)) }
+                    let box = face.boundingBox
+                    if let region = try? FeatureRegion.fromVisionPoints(kind: kind,points: points,
+                                                                       faceX: box.minX,faceY: box.minY,faceWidth: box.width,faceHeight: box.height) {
+                        regions.append(region)
+                    }
+                }
+            }
+            return regions
+        } catch is CancellationError { throw CancellationError() }
+        catch { try Task.checkCancellation(); return [] }
+    }
+
+    private static func detectSubject(_ image: CGImage,point: Point?) throws -> SubjectAnalysis {
         try Task.checkCancellation()
         let request = VNGenerateForegroundInstanceMaskRequest()
         let handler = VNImageRequestHandler(cgImage: image, orientation: .up, options: [:])

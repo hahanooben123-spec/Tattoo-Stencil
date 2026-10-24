@@ -10,6 +10,7 @@ public struct StructuralEdgeDetector: Sendable {
         var magnitude = [Float](repeating: 0, count: n)
         var direction = [UInt8](repeating: 0, count: n)
         let a = image.pixels
+        let featureMap = try guidance?.featureMap(width: w,height: h)
         if w < 3 || h < 3 { return [UInt8](repeating: 0, count: n) }
         let coarse = try ScaleSpace.gaussian(a, width: w, height: h, sigma: max(0.55, 1.6 * p.samplingScale))
         let means = try ScaleSpace.mean(a, width: w, height: h, radius: max(1, Int((5 * p.samplingScale).rounded())))
@@ -32,21 +33,29 @@ public struct StructuralEdgeDetector: Sendable {
             }
         }
         var state = [UInt8](repeating: 0, count: n), queue: [Int] = []
-        let high = p.edgeThreshold * (1.4 - p.detail), low = high * 0.4
+        let high = p.edgeThreshold * (1.4 - p.detail)
         let offsets = [1, w + 1, w, w - 1]
         for y in 1..<(h - 1) {
             try Task.checkCancellation()
             for x in 1..<(w - 1) {
                 let i = y * w + x, m = magnitude[i], d = offsets[Int(direction[i])]
                 let nearSubject = guidance?.boundary(x: x,y: y,width: w,height: h) ?? false
-                if let guidance, !nearSubject && guidance.value(x: x,y: y,width: w,height: h) < 0.15 { continue }
+                let feature = featureMap?[i] == 1
+                if let guidance, !nearSubject && !feature && guidance.value(x: x,y: y,width: w,height: h) < 0.15 { continue }
                 let penalty = p.textureSuppression * (1 - support[i]) * (1 - 0.65 * p.detail)
                 let score = m * (1 - penalty)
                 let contrastFloor: Float = 0.008 + (1 - p.detail) * 0.035
-                let localHigh = nearSubject ? high * 0.55 : high
-                let localLow = nearSubject ? low * 0.55 : low
+                var localHigh = nearSubject ? high * 0.55 : high
+                if feature {
+                    localHigh = min(localHigh*0.4,max(0.012,localContrast[i]*0.8))
+                } else if p.detail > 0.65 && support[i] > 0.55 {
+                    // Coherent low-contrast details should not need a global dark/light
+                    // jump. A minimum absolute gradient still excludes flat gradients.
+                    localHigh = min(localHigh,max(0.02,localContrast[i]))
+                }
+                let localLow = localHigh*0.4
                 // Asymmetric plateau tie-break prevents doubled step edges.
-                if score >= localLow && (localContrast[i] >= contrastFloor * (nearSubject ? 0.5 : 1) || m >= high * 2),
+                if score >= localLow && (localContrast[i] >= (feature ? 0.003 : contrastFloor * (nearSubject ? 0.5 : 1)) || m >= high * 2),
                    m > magnitude[i-d] && m >= magnitude[i+d] {
                     state[i] = score >= localHigh ? 2 : 1
                     if state[i] == 2 { queue.append(i) }

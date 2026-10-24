@@ -17,6 +17,7 @@ final class InteractivePreviewTests: XCTestCase {
         for kind in LayerKind.allCases {
             XCTAssertEqual(a.contours(for: kind).map(\.points),b.contours(for: kind).map(\.points),file: file,line: line)
             XCTAssertEqual(a.contours(for: kind).map(\.isPrimary),b.contours(for: kind).map(\.isPrimary),file: file,line: line)
+            XCTAssertEqual(a.contours(for: kind).map(\.isFeature),b.contours(for: kind).map(\.isFeature),file: file,line: line)
             XCTAssertEqual(a.contours(for: kind).map(\.closed),b.contours(for: kind).map(\.closed),file: file,line: line)
         }
     }

@@ -217,7 +217,7 @@ final class WorkspaceModel: ObservableObject {
                     result = delivery.frame.result; drawing = delivery.drawing; lastPreview = delivery
                     processedParameters = intent.parameters
                     if intent.quality == .refined && intent.id == requestID { needsRefinement = false }
-                    status = intent.quality == .interactive ? "Live-forhåndsvisning" : "Forhåndsvisning klar"
+                    status = intent.quality == .interactive ? "Hurtig forhåndsvisning · finpudses ved slip" : "Detaljeret forhåndsvisning klar"
                 }
             } catch {
                 guard previewContext == context else { return }

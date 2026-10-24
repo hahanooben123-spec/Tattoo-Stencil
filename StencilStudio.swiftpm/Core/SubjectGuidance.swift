@@ -5,7 +5,10 @@ import Foundation
 public struct SubjectGuidance: Sendable {
     public let mask: GrayImage
     public let revision: UUID
-    public init(mask: GrayImage) { self.mask = mask; self.revision = UUID() }
+    public let features: [FeatureRegion]
+    public init(mask: GrayImage,features: [FeatureRegion] = []) {
+        self.mask = mask; self.features = Array(features.prefix(64)); self.revision = UUID()
+    }
     public func value(x: Int, y: Int, width: Int, height: Int) -> Float {
         let mx = min(mask.width-1, max(0, x * mask.width / width))
         let my = min(mask.height-1, max(0, y * mask.height / height))
@@ -52,24 +55,30 @@ public struct MainContourSelector: Sendable {
         for var path in paths {
             try Task.checkCancellation()
             guard !path.points.isEmpty else { continue }
-            var contrast: Float = 0, boundaryCount = 0, insideCount = 0
+            var contrast: Float = 0, boundaryCount = 0, insideCount = 0, featureCount = 0
             for (i,point) in path.points.enumerated() {
                 if i % 4096 == 0 { try Task.checkCancellation() }
                 let x = min(w-1,max(0,Int(point.x))), y = min(h-1,max(0,Int(point.y)))
                 let gx = abs(image.pixels[y*w+min(w-1,x+2)] - image.pixels[y*w+max(0,x-2)])
                 let gy = abs(image.pixels[min(h-1,y+2)*w+x] - image.pixels[max(0,y-2)*w+x])
-                contrast += max(gx,gy)
+                // A wide difference can cancel across both sides of a thin eyelid
+                // or lip. Retain the immediate gradient evidence as well.
+                let nearX = abs(image.pixels[y*w+min(w-1,x+1)] - image.pixels[y*w+max(0,x-1)])
+                let nearY = abs(image.pixels[min(h-1,y+1)*w+x] - image.pixels[max(0,y-1)*w+x])
+                contrast += max(max(gx,gy),max(nearX,nearY))
                 if let guidance {
                     if guidance.boundary(x: x,y: y,width: w,height: h) { boundaryCount += 1 }
                     if guidance.value(x: x,y: y,width: w,height: h) >= 0.25 { insideCount += 1 }
+                    if guidance.isFeature(x: x,y: y,width: w,height: h) { featureCount += 1 }
                 }
             }
             let count = Float(path.points.count), strength = contrast/count, length = path.length
+            path.isFeature = Float(featureCount)/count >= 0.2 && strength >= 0.015 && length >= 2
             if guidance != nil {
                 // Keep actual silhouette edges just outside a soft mask, but discard
                 // irrelevant background strokes. The mask perimeter is never traced.
-                guard Float(insideCount)/count >= 0.35 || Float(boundaryCount)/count >= 0.25 else { continue }
-                path.isPrimary = Float(boundaryCount)/count >= 0.2 || (strength >= 0.12 && length >= dimension*0.025)
+                guard path.isFeature || Float(insideCount)/count >= 0.35 || Float(boundaryCount)/count >= 0.25 else { continue }
+                path.isPrimary = path.isFeature || Float(boundaryCount)/count >= 0.2 || (strength >= 0.12 && length >= dimension*0.025)
             } else {
                 path.isPrimary = (length >= dimension*0.12 && strength >= 0.06) || (length >= dimension*0.025 && strength >= 0.25)
             }

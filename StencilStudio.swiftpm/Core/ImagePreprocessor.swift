@@ -6,10 +6,11 @@ import Accelerate
 public struct ImagePreprocessor: Sendable {
     public init() {}
     /// Small bilateral kernel: spatial smoothing weighted by luminance similarity.
-    public func process(_ image: GrayImage, parameters p: Parameters) throws -> GrayImage {
+    public func process(_ image: GrayImage, parameters p: Parameters,guidance: SubjectGuidance? = nil) throws -> GrayImage {
         try p.validate()
         let w = image.width, h = image.height
         var output = image.pixels
+        let features = try guidance?.featureMap(width: w,height: h)
         if p.noiseReduction > 0 {
             let radius = max(1, Int(((p.noiseReduction > 0.65 ? 3.0 : 2.0) * p.samplingScale).rounded()))
             let rangeSigma = 0.025 + Double(p.noiseReduction) * 0.12
@@ -35,7 +36,11 @@ public struct ImagePreprocessor: Sendable {
                         let weight = spatial * rangeWeights[min(4096,Int(abs(delta) * 4096 + 0.5))]
                         sum += sample * weight; weights += weight
                     }
-                    output[y * w + x] = Float(sum / weights)
+                    let filtered = sum/weights
+                    // Thin low-contrast facial lines must survive smoothing before
+                    // edge selection gets a chance to protect them.
+                    let preserve = features?[y*w+x] == 1 ? 0.7+0.25*Double(p.detail) : 0
+                    output[y*w+x] = Float(filtered*(1-preserve)+center*preserve)
                 }
             }
         }

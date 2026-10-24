@@ -24,15 +24,15 @@ func processStencil(_ input: GrayImage, parameters p: Parameters, limits: Proces
         guard abs(a-b)/max(a,b) < 0.02 else { throw StencilError.invalidImage }
     }
     progress(0.02,"Edge-preserving preprocessing")
-    let imageKey = PreprocessKey(p), image: GrayImage
+    let imageKey = PreprocessKey(p,features: guidance?.features ?? []), image: GrayImage
     if let saved = cache.image, saved.0 == imageKey {
         image = saved.1; statistics.reused.append("preprocess")
     } else {
-        image = try ImagePreprocessor().process(input,parameters: p)
+        image = try ImagePreprocessor().process(input,parameters: p,guidance: guidance)
         cache.image = (imageKey,image); statistics.computed.append("preprocess")
     }
     progress(0.3,"Multiscale structural contours")
-    let outlineKey = OutlineKey(p,guidanceRevision), edges: [UInt8], outlines: [Contour]
+    let outlineKey = OutlineKey(p,guidanceRevision,image: imageKey), edges: [UInt8], outlines: [Contour]
     let optimizer = ContourOptimizer()
     if let saved = cache.outlines, saved.0 == outlineKey {
         edges = saved.1; outlines = saved.2; statistics.reused.append("outlines")
@@ -44,7 +44,7 @@ func processStencil(_ input: GrayImage, parameters p: Parameters, limits: Proces
         cache.outlines = (outlineKey,edges,outlines); statistics.computed.append("outlines")
     }
     progress(0.55,"Adaptive tonal regions")
-    let toneKey = ToneKey(p), segmentation: Segmentation
+    let toneKey = ToneKey(p,image: imageKey), segmentation: Segmentation
     if let saved = cache.tones, saved.0 == toneKey {
         segmentation = saved.1; statistics.reused.append("tones")
     } else {
@@ -53,7 +53,7 @@ func processStencil(_ input: GrayImage, parameters p: Parameters, limits: Proces
         cache.tones = (toneKey,segmentation); statistics.computed.append("tones")
     }
     progress(0.78,"Shadow boundaries")
-    let shadowKey = ShadowKey(p,guidanceRevision), shadows: [Contour]
+    let shadowKey = ShadowKey(p,guidanceRevision,image: imageKey), shadows: [Contour]
     if let saved = cache.shadows, saved.0 == shadowKey {
         shadows = saved.1; statistics.reused.append("shadows")
     } else {
@@ -64,13 +64,13 @@ func processStencil(_ input: GrayImage, parameters p: Parameters, limits: Proces
             progress(0.84,"Spacing and duplicate suppression")
             let cleaned = try ShadowBoundaryCleaner().clean(selected,outlines: p.suppressOutlineDuplicates ? outlines : [],
                                                             width: image.width,height: image.height,spacing: p.shadowSpacing,
-                                                            minimumLength: p.minimumContourLength,maximumSamples: limits.maximumGraphLinks*2)
-            shadows = try optimizer.optimize(cleaned,minimumLength: p.minimumContourLength,tolerance: p.smoothing)
+                                                            minimumLength: max(p.minimumContourLength,p.minimumShadowContourLength),maximumSamples: limits.maximumGraphLinks*2)
+            shadows = try optimizer.optimize(cleaned,minimumLength: max(p.minimumContourLength,p.minimumShadowContourLength),tolerance: p.smoothing)
         } else { shadows = [] }
         cache.shadows = (shadowKey,shadows); statistics.computed.append("shadows")
     }
     progress(0.9,"Highlight boundaries")
-    let highlightKey = HighlightKey(p,guidanceRevision), highlights: [Contour]
+    let highlightKey = HighlightKey(p,guidanceRevision,image: imageKey), highlights: [Contour]
     if let saved = cache.highlights, saved.0 == highlightKey {
         highlights = saved.1; statistics.reused.append("highlights")
     } else {

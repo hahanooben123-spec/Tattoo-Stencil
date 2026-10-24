@@ -40,8 +40,9 @@ public struct Contour: Sendable {
     public var points: [Point]
     public var closed: Bool
     public var isPrimary: Bool
-    public init(points: [Point], closed: Bool = false, isPrimary: Bool = false) {
-        self.points = points; self.closed = closed; self.isPrimary = isPrimary
+    public var isFeature: Bool
+    public init(points: [Point], closed: Bool = false, isPrimary: Bool = false,isFeature: Bool = false) {
+        self.points = points; self.closed = closed; self.isPrimary = isPrimary; self.isFeature = isFeature
     }
     public var length: Double {
         guard points.count > 1 else { return 0 }
@@ -63,6 +64,7 @@ public struct Parameters: Sendable, Equatable {
     public var detail: Float = 0.5
     public var edgeThreshold: Float = 0.16
     public var minimumContourLength: Double = 18
+    public var minimumShadowContourLength: Double = 24
     public var smoothing: Double = 0.6
     public var tonalLevels = 7
     public var shadowSensitivity: Float = 0.5
@@ -88,6 +90,7 @@ public struct Parameters: Sendable, Equatable {
               edgeThreshold.isFinite, (0.001...2).contains(edgeThreshold),
               (3...10).contains(tonalLevels), minimumRegionArea > 0, minimumHighlightArea > 0,
               minimumContourLength.isFinite, minimumContourLength >= 0,
+              minimumShadowContourLength.isFinite, minimumShadowContourLength >= 0,
               smoothing.isFinite, (0...2).contains(smoothing),
               dashLength.isFinite, dashLength > 0, dashSpacing.isFinite, dashSpacing > 0,
               shadowSpacing.isFinite, (0...16).contains(shadowSpacing),
@@ -99,7 +102,7 @@ public struct Parameters: Sendable, Equatable {
         guard scale.isFinite, scale > 0, scale <= 1 else { throw StencilError.invalidParameters }
         var p = self
         p.samplingScale *= scale
-        p.minimumContourLength *= scale; p.smoothing *= scale; p.shadowSpacing *= scale
+        p.minimumContourLength *= scale; p.minimumShadowContourLength *= scale; p.smoothing *= scale; p.shadowSpacing *= scale
         p.minimumRegionArea = max(1, Int((Double(minimumRegionArea) * scale * scale).rounded()))
         p.minimumHighlightArea = max(1, Int((Double(minimumHighlightArea) * scale * scale).rounded()))
         return p
