@@ -15,7 +15,7 @@ final class WorkspaceModel: ObservableObject {
     @Published var styles = Dictionary(uniqueKeysWithValues: LayerKind.allCases.map { kind in
         var style = LayerStyle()
         if kind == .outlines { style.width = 2 }
-        else { style.opacity = kind == .shadows ? 0.5 : 0.4; style.width = 1 }
+        else { style.width = 1 }
         return (kind, style)
     })
     @Published var imported: ImportedImage?
@@ -29,7 +29,6 @@ final class WorkspaceModel: ObservableObject {
     @Published var exportURL: URL?
     @Published var widthMM = 150.0
     @Published var transparent = false
-    @Published var inverted = false
     @Published var exportFormat = ExportFormat.png
     @Published var debugStage = DebugStage.stencil
     @Published var debugImage: CGImage?
@@ -262,7 +261,7 @@ final class WorkspaceModel: ObservableObject {
         exportURL = nil; fullResolutionVerified = false; needsRefinement = false
         let id = operationRevision, p = parameters, lane = lane, limits = ProcessingLimits.device, engine = engine
         let guidance = cachedSubject?.guidance
-        let styles = styles, mm = widthMM, transparent = transparent, inverted = inverted, format = exportFormat
+        let styles = styles, mm = widthMM, transparent = transparent, format = exportFormat
         let callback = progressCallback(id: id)
         progress = 0; status = "Behandler fuld opløsning"
         let task = Task.detached(priority: .userInitiated) {
@@ -279,7 +278,7 @@ final class WorkspaceModel: ObservableObject {
                 let agreement = try preview.map { try PreviewFidelity.compare(preview: $0,final: output) }
                 let drawing = try StencilRenderer.prepare(output)
                 let url = exporting ? try ExportService.export(output,styles: styles,parameters: p,widthMM: mm,
-                                                               transparent: transparent,inverted: inverted,format: format) : nil
+                                                               transparent: transparent,format: format) : nil
                 return NativeDelivery(result: output,drawing: drawing,url: url,agreement: agreement)
             }
         }
@@ -292,7 +291,7 @@ final class WorkspaceModel: ObservableObject {
                 fullResolutionVerified = true; agreement = delivery.agreement
                 nativeWorker = nil; refreshBusy(); updateDebug()
                 guard self.styles == styles, self.widthMM == mm, self.transparent == transparent,
-                      self.inverted == inverted, self.exportFormat == format, self.parameters == p else {
+                      self.exportFormat == format, self.parameters == p else {
                     status = "Endelig geometri klar · eksportens udseende er ændret"; return
                 }
                 exportURL = delivery.url

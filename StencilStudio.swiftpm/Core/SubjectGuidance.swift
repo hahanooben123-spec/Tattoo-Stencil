@@ -73,14 +73,23 @@ public struct MainContourSelector: Sendable {
                 }
             }
             let count = Float(path.points.count), strength = contrast/count, length = path.length
+            // Long, coherent source curves and enclosed shapes make useful
+            // separators even when their contrast is lower than tiny texture.
+            var chordLength = 0.0
+            for start in stride(from: 0,to: max(0,path.points.count-1),by: 6) {
+                let end = min(path.points.count-1,start+6)
+                chordLength += hypot(path.points[end].x-path.points[start].x,path.points[end].y-path.points[start].y)
+            }
+            let coherentForm = length >= dimension*0.06 && strength >= 0.04 &&
+                (path.closed || chordLength/max(length,0.000001) >= 0.86)
             path.isFeature = Float(featureCount)/count >= 0.2 && strength >= 0.015 && length >= 2
             if guidance != nil {
                 // Keep actual silhouette edges just outside a soft mask, but discard
                 // irrelevant background strokes. The mask perimeter is never traced.
                 guard path.isFeature || Float(insideCount)/count >= 0.35 || Float(boundaryCount)/count >= 0.25 else { continue }
-                path.isPrimary = path.isFeature || Float(boundaryCount)/count >= 0.2 || (strength >= 0.12 && length >= dimension*0.025)
+                path.isPrimary = path.isFeature || coherentForm || Float(boundaryCount)/count >= 0.2 || (strength >= 0.12 && length >= dimension*0.025)
             } else {
-                path.isPrimary = (length >= dimension*0.12 && strength >= 0.06) || (length >= dimension*0.025 && strength >= 0.25)
+                path.isPrimary = coherentForm || (length >= dimension*0.12 && strength >= 0.06) || (length >= dimension*0.025 && strength >= 0.25)
             }
             output.append(path)
         }
@@ -94,6 +103,6 @@ public struct OutlineStroke: Sendable {
     public static func style(primary: Bool, emphasis: Float) -> OutlineStroke {
         let amount = Double(min(1,max(0,emphasis)))
         return OutlineStroke(widthMultiplier: primary ? 1+amount : 1-0.15*amount,
-                             opacityMultiplier: primary ? 1 : 1-0.4*amount)
+                             opacityMultiplier: 1)
     }
 }

@@ -53,7 +53,6 @@ public struct Contour: Sendable {
 public enum LayerKind: String, CaseIterable, Sendable { case outlines, shadows, highlights }
 public struct LayerStyle: Sendable, Equatable {
     public var visible = true
-    public var opacity: Double = 1
     /// Source-image pixels; independent of preview resolution.
     public var width: Double = 1.5
     public init() {}

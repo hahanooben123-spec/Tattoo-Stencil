@@ -7,7 +7,7 @@ enum ExportFormat: String, CaseIterable { case png = "PNG", pdf = "PDF" }
 
 enum ExportService {
     static func export(_ result: StencilResult, styles: [LayerKind: LayerStyle], parameters: Parameters,
-                       widthMM: Double, transparent: Bool, inverted: Bool, format: ExportFormat) throws -> URL {
+                       widthMM: Double, transparent: Bool, format: ExportFormat) throws -> URL {
         guard widthMM.isFinite, widthMM >= 10, widthMM <= 2000 else { throw StencilError.invalidParameters }
         _ = try ProcessingLimits.device.bounded(width: result.width, height: result.height)
         try Task.checkCancellation()
@@ -17,7 +17,7 @@ enum ExportService {
         var completed = false
         defer { if !completed { try? FileManager.default.removeItem(at: url) } }
         if format == .png {
-            let image = try StencilRenderer.image(result, styles: styles, parameters: parameters, strokeScale: 1, transparent: transparent, inverted: inverted)
+            let image = try StencilRenderer.image(result, styles: styles, parameters: parameters, strokeScale: 1, transparent: transparent)
             guard let destination = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil) else { throw ImportError.allocation }
             let dpi = Double(result.width) / widthMM * 25.4
             CGImageDestinationAddImage(destination, image, [kCGImagePropertyDPIWidth: dpi, kCGImagePropertyDPIHeight: dpi] as CFDictionary)
@@ -29,10 +29,10 @@ enum ExportService {
             try renderer.writePDF(to: url) { rendererContext in
                 rendererContext.beginPage()
                 let c = rendererContext.cgContext
-                c.setFillColor((inverted ? UIColor.black : UIColor.white).cgColor)
+                c.setFillColor(UIColor.white.cgColor)
                 c.fill(CGRect(x: 0, y: 0, width: width, height: height))
                 c.scaleBy(x: width / Double(result.width), y: height / Double(result.height))
-                StencilRenderer.draw(result, context: c, styles: styles, parameters: parameters, strokeScale: 1, inverted: inverted)
+                StencilRenderer.draw(result, context: c, styles: styles, parameters: parameters, strokeScale: 1)
             }
         }
         try Task.checkCancellation()

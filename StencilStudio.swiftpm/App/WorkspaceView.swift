@@ -120,7 +120,6 @@ struct WorkspaceView: View {
         .onChange(of: model.debugStage) { _, _ in model.updateDebug() }
         .onChange(of: model.widthMM) { _, _ in model.exportURL = nil }
         .onChange(of: model.transparent) { _, _ in model.exportURL = nil }
-        .onChange(of: model.inverted) { _, _ in model.exportURL = nil }
         .onChange(of: model.exportFormat) { _, _ in model.exportURL = nil }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
             model.handleMemoryPressure()
@@ -133,7 +132,7 @@ struct WorkspaceView: View {
     private func canvas(source: ImportedImage) -> some View {
         GeometryReader { geometry in
             ZStack(alignment: .leading) {
-                model.inverted ? Color.black : Color.white
+                Color.white
                 if let debug = model.debugImage {
                     Image(decorative: debug, scale: 1).resizable().interpolation(.none)
                 } else if let drawing = model.drawing {
@@ -141,7 +140,7 @@ struct WorkspaceView: View {
                         context.withCGContext { cg in
                             cg.scaleBy(x: size.width / Double(drawing.width), y: size.height / Double(drawing.height))
                             StencilRenderer.draw(drawing, context: cg, styles: model.styles, parameters: model.parameters,
-                                                 strokeScale: model.previewScale, inverted: model.inverted)
+                                                 strokeScale: model.previewScale,minimumDeviceLineWidth: 1.5)
                         }
                     }
                 }
@@ -174,13 +173,11 @@ struct WorkspaceView: View {
                 floatSlider("Følsomhed for højlys",value: $model.parameters.highlightSensitivity,range: 0...1)
                 floatSlider("Støjreduktion",value: $model.parameters.noiseReduction,range: 0...1)
                 floatSlider("Kontrast",value: $model.parameters.contrast,range: 0.5...2)
-                Toggle("Invertér farver",isOn: $model.inverted)
                 Toggle("Transparent PNG",isOn: $model.transparent)
             }
             ForEach(LayerKind.allCases,id: \.self) { kind in
                 VStack(alignment: .leading) {
                     Toggle(kind.rawValue.capitalized,isOn: style(kind,\.visible))
-                    doubleSlider("Opacitet",value: style(kind,\.opacity),range: 0...1)
                     doubleSlider("Linjebredde · px",value: style(kind,\.width),range: 0.4...6)
                 }
             }

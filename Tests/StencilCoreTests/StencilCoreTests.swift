@@ -2,6 +2,20 @@ import XCTest
 @testable import StencilCore
 
 final class StencilCoreTests: XCTestCase {
+    func testFormContourContinuesThroughClearTJunctionWithoutBridgingGaps() throws {
+        let w = 32,h = 32
+        var edges = [UInt8](repeating: 0,count: w*h)
+        for x in 3...28 { edges[12*w+x] = 1 }
+        for y in 12...26 { edges[y*w+16] = 1 }
+        // Separate nearby stroke must never be joined across the blank pixels.
+        for y in 16...23 { edges[y*w+20] = 1 }
+        let paths = try StructuralContourTracer().traceEdges(edges,width: w,height: h)
+        XCTAssertEqual(paths.count,3)
+        XCTAssertTrue(paths.contains { $0.points.count == 26 && $0.points.allSatisfy { $0.y == 12.5 } })
+        for path in paths { for pair in zip(path.points,path.points.dropFirst()) {
+            XCTAssertLessThanOrEqual(hypot(pair.0.x-pair.1.x,pair.0.y-pair.1.y),sqrt(2))
+        } }
+    }
     func image(_ w: Int = 64, _ h: Int = 48, pixel: (Int, Int) -> Float) throws -> GrayImage {
         try GrayImage(width: w, height: h, pixels: (0..<h).flatMap { y in (0..<w).map { x in pixel(x, y) } })
     }

@@ -27,7 +27,7 @@ Do not use a single automatic score as acceptance. Have a realism tattoo artist 
 2. Test wide, tall, transparent, color-managed and high-resolution inputs. Inspect near-border geometry and aspect ratio. Confirm full-resolution PNG dimensions match the orientation-corrected source exactly.
 3. Verify preview settings repeatedly cancel obsolete work and the last requested reference/settings win. Test switching references during import and cancelling export. Monitor memory across repeated operations.
 4. Compare the Apple Accelerate contrast path with scalar test results within floating-point tolerance. Run `swift test` on macOS as well as Linux.
-5. Export each layer separately and combined; inspect opacity, widths, shadow dash spacing and highlight dots. Transparent PNG corners must have zero alpha; white-background PNG must be opaque. Test color inversion separately.
+5. Export each layer separately and combined; inspect solid black ink, widths, shadow dash spacing and highlight dots. Transparent PNG corners must have zero alpha; white-background PNG must be opaque. All visible layers must use full-opacity black; there is no inversion or opacity control.
 6. Export a 150 mm-wide PDF and check its MediaBox is 425.19685 points wide. Print at actual size on suitable paper and measure the result. Verify driver margins do not clip the design.
 7. Verify Photos/Files/share-sheet flows on an actual iPad and run offline in airplane mode with locally stored images. Cloud-only Photos/Files items must be downloaded before offline import.
 8. Record failures and artist feedback before claiming professional quality. Apple Pencil/manual edits and dedicated print UI are outside this first version.
@@ -84,3 +84,9 @@ On device, test human portraits with weak eyelids/lips, masked or stylized faces
 The wolf workspace photograph showed dense fur strokes overwhelming the subject. Structural blur now follows image dimensions rather than native sampling scale, with a useful minimum for small previews. Repeated texture with little coarse support is rejected unless it is an isolated strong fine stroke, a guided facial feature or a subject boundary. Detail no longer weakens texture suppression. Ordinary contour length and simple-control denoising retain conservative floors even at maximum detail. Tone segmentation now operates on a separately smoothed image to avoid tracing each small fur fluctuation as a shadow guide.
 
 A targeted regression reproduces the reported 2480 × 3508 import scale with maximum detail: repeated texture is reduced by more than 75% versus texture suppression disabled, while the strong source boundary remains. This is synthetic evidence, not a measured result on the wolf reference; the user will test the actual image on iPad. The historical geometry-fixture timings and agreement above predate this correction.
+
+## Black ink and separating forms
+
+All stencil render paths now use opaque black, with hierarchy expressed through width and dash patterns. The preview applies a 1.5-device-pixel minimum width to avoid disappearing subpixel strokes; PNG/PDF preserve native stroke widths. Antialiased edge coverage is retained.
+
+Structural tracing continues through junctions only when opposing branch tangents form an unambiguous pair. It follows existing graph links and never draws across missing source pixels. Ambiguous junctions and tonal-region junctions remain separate strokes. Long coherent curves and significant enclosed source contours receive primary-width emphasis even at moderate contrast. This is geometric form prioritization, not general semantic object recognition. A regression checks a T junction continues along the main form while a separate nearby stroke remains disconnected.

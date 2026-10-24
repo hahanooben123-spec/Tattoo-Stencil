@@ -6,15 +6,65 @@ private struct Link: Hashable {
     init(_ a: Int, _ b: Int) { self.a = min(a, b); self.b = max(a, b) }
 }
 
-/// Follow graph edges once. Junctions terminate a stroke, avoiding artificial lines
-/// connecting unrelated branches. Iterative traversal handles long contours safely.
-private func trace(_ graph: [Int: [Int]], stride: Int, offset: Double) throws -> [Contour] {
+/// Pair only unambiguous opposing branches. Every step still follows an existing
+/// source edge; no endpoints are bridged across a gap.
+private func junctionRoutes(_ graph: [Int: [Int]], node: Int, stride: Int) -> [Int: Int] {
+    let neighbors = graph[node]!
+    if neighbors.count == 2 { return [neighbors[0]: neighbors[1],neighbors[1]: neighbors[0]] }
+    guard neighbors.count > 2 else { return [:] }
+    func tangent(_ neighbor: Int) -> (Double,Double) {
+        var previous = node, current = neighbor
+        for _ in 0..<5 {
+            guard let next = graph[current],next.count == 2,
+                  let candidate = next.first(where: { $0 != previous }),candidate != node else { break }
+            previous = current; current = candidate
+        }
+        let dx = Double(current % stride-node % stride), dy = Double(current / stride-node / stride)
+        let length = max(1,hypot(dx,dy))
+        return (dx/length,dy/length)
+    }
+    let directions = neighbors.map(tangent)
+    var pairs: [(Int,Int,Double)] = []
+    for a in neighbors.indices { for b in neighbors.indices where b > a {
+        let dot = directions[a].0*directions[b].0+directions[a].1*directions[b].1
+        if dot < -0.65 { pairs.append((neighbors[a],neighbors[b],dot)) }
+    } }
+    pairs.sort { $0.2 == $1.2 ? ($0.0 == $1.0 ? $0.1 < $1.1 : $0.0 < $1.0) : $0.2 < $1.2 }
+    var routes: [Int: Int] = [:]
+    for pair in pairs {
+        guard routes[pair.0] == nil,routes[pair.1] == nil else { continue }
+        let ambiguous = pairs.contains { other in
+            (other.0 != pair.0 || other.1 != pair.1) && routes[other.0] == nil && routes[other.1] == nil &&
+            (other.0 == pair.0 || other.0 == pair.1 || other.1 == pair.0 || other.1 == pair.1) && other.2-pair.2 < 0.15
+        }
+        guard !ambiguous else { continue }
+        routes[pair.0] = pair.1; routes[pair.1] = pair.0
+    }
+    return routes
+}
+
+/// Follow graph edges once. Tonal junctions terminate strokes. Structural
+/// junctions may continue along a clearly matching tangent.
+private func trace(_ graph: [Int: [Int]], stride: Int, offset: Double, continueForms: Bool = false) throws -> [Contour] {
     var used = Set<Link>(), result: [Contour] = []
     let nodes = graph.keys.sorted()
     func point(_ node: Int) -> Point { Point(Double(node % stride) + offset, Double(node / stride) + offset) }
-    for start in nodes.filter({ graph[$0]!.count != 2 }) + nodes.filter({ graph[$0]!.count == 2 }) {
+    var routes: [Int: [Int: Int]] = [:]
+    if continueForms {
+        for node in nodes where graph[node]!.count > 2 {
+            try Task.checkCancellation()
+            routes[node] = junctionRoutes(graph,node: node,stride: stride)
+        }
+    }
+    func continuation(_ node: Int,_ previous: Int) -> Int? {
+        if graph[node]!.count == 2 { return graph[node]!.first { $0 != previous } }
+        return routes[node]?[previous]
+    }
+    // Start at unmatched endpoints before visiting the remaining closed loops.
+    for phase in 0...1 { for start in nodes {
         try Task.checkCancellation()
         for next in graph[start]!.sorted() where !used.contains(Link(start, next)) {
+            guard (continuation(start,next) == nil) == (phase == 0) else { continue }
             var path = [point(start)], previous = start, current = next
             used.insert(Link(previous, current))
             var closed = false
@@ -22,15 +72,13 @@ private func trace(_ graph: [Int: [Int]], stride: Int, offset: Double) throws ->
                 if path.count % 4096 == 0 { try Task.checkCancellation() }
                 if current == start { closed = true; break }
                 path.append(point(current))
-                let neighbors = graph[current]!
-                guard neighbors.count == 2,
-                      let candidate = neighbors.first(where: { $0 != previous }),
+                guard let candidate = continuation(current,previous),
                       !used.contains(Link(current, candidate)) else { break }
                 used.insert(Link(current, candidate)); previous = current; current = candidate
             }
             if path.count >= 2 { result.append(Contour(points: path, closed: closed)) }
         }
-    }
+    } }
     return result
 }
 
@@ -56,7 +104,7 @@ public struct StructuralContourTracer: Sendable {
                 }
             }
         }
-        return try trace(graph, stride: w, offset: 0.5)
+        return try trace(graph, stride: w, offset: 0.5, continueForms: true)
     }
 }
 

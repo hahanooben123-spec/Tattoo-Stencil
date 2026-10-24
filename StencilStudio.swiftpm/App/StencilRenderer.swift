@@ -33,19 +33,23 @@ enum StencilRenderer {
         return PreparedStencil(width: result.width,height: result.height,layers: layers)
     }
     static func draw(_ result: StencilResult, context: CGContext, styles: [LayerKind: LayerStyle],
-                     parameters: Parameters, strokeScale: Double, inverted: Bool) {
+                     parameters: Parameters, strokeScale: Double) {
         guard let prepared = try? prepare(result) else { return }
-        draw(prepared,context: context,styles: styles,parameters: parameters,strokeScale: strokeScale,inverted: inverted)
+        draw(prepared,context: context,styles: styles,parameters: parameters,strokeScale: strokeScale)
     }
     static func draw(_ prepared: PreparedStencil, context: CGContext, styles: [LayerKind: LayerStyle],
-                     parameters: Parameters, strokeScale: Double, inverted: Bool) {
+                     parameters: Parameters, strokeScale: Double, minimumDeviceLineWidth: Double = 0) {
         context.setLineCap(.round); context.setLineJoin(.round)
-        context.setStrokeColor((inverted ? UIColor.white : UIColor.black).cgColor)
+        context.setStrokeColor(UIColor.black.cgColor)
+        context.setAlpha(1)
+        // Preview only: subpixel-wide strokes look gray even with opaque black
+        // ink. Native PNG/PDF keep their configured physical stroke widths.
+        let minimum = context.convertToUserSpace(CGSize(width: minimumDeviceLineWidth,height: minimumDeviceLineWidth))
+        let minimumWidth = Double(max(abs(minimum.width),abs(minimum.height)))
         for kind in LayerKind.allCases {
             let style = styles[kind] ?? LayerStyle()
             guard style.visible else { continue }
-            context.setAlpha(style.opacity)
-            context.setLineWidth(style.width * strokeScale)
+            context.setLineWidth(max(minimumWidth,style.width * strokeScale))
             switch kind {
             case .outlines: context.setLineDash(phase: 0, lengths: [])
             case .shadows: context.setLineDash(phase: 0, lengths: [parameters.dashLength * strokeScale, parameters.dashSpacing * strokeScale])
@@ -55,8 +59,7 @@ enum StencilRenderer {
                 if Task.isCancelled { return }
                 if kind == .outlines {
                     let appearance = OutlineStroke.style(primary: stroke.primary, emphasis: parameters.outlineEmphasis)
-                    context.setLineWidth(style.width * strokeScale * appearance.widthMultiplier)
-                    context.setAlpha(style.opacity * appearance.opacityMultiplier)
+                    context.setLineWidth(max(minimumWidth,style.width * strokeScale * appearance.widthMultiplier))
                 }
                 context.beginPath(); context.addPath(stroke.path)
                 context.strokePath()
@@ -66,17 +69,17 @@ enum StencilRenderer {
     }
 
     static func image(_ result: StencilResult, styles: [LayerKind: LayerStyle], parameters: Parameters,
-                      strokeScale: Double, transparent: Bool, inverted: Bool) throws -> CGImage {
+                      strokeScale: Double, transparent: Bool) throws -> CGImage {
         try Task.checkCancellation()
         guard let context = CGContext(data: nil, width: result.width, height: result.height, bitsPerComponent: 8,
                                       bytesPerRow: result.width*4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
                                       bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { throw ImportError.allocation }
         if !transparent {
-            context.setFillColor((inverted ? UIColor.black : UIColor.white).cgColor)
+            context.setFillColor(UIColor.white.cgColor)
             context.fill(CGRect(x: 0, y: 0, width: result.width, height: result.height))
         }
         context.translateBy(x: 0, y: Double(result.height)); context.scaleBy(x: 1, y: -1)
-        draw(result, context: context, styles: styles, parameters: parameters, strokeScale: strokeScale, inverted: inverted)
+        draw(result, context: context, styles: styles, parameters: parameters, strokeScale: strokeScale)
         try Task.checkCancellation()
         guard let image = context.makeImage() else { throw ImportError.allocation }
         return image
