@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import PhotosUI
 import UniformTypeIdentifiers
 import StencilCore
@@ -25,6 +26,7 @@ struct WorkspaceView: View {
                 }
                 Section("Structural outlines") {
                     floatSlider("Detail", value: $model.parameters.detail, range: 0...1)
+                    floatSlider("Texture suppression", value: $model.parameters.textureSuppression, range: 0...1)
                     floatSlider("Edge threshold", value: $model.parameters.edgeThreshold, range: 0.01...0.8)
                     doubleSlider("Minimum length · px", value: $model.parameters.minimumContourLength, range: 0...160)
                     doubleSlider("Simplification · px", value: $model.parameters.smoothing, range: 0...2)
@@ -32,6 +34,9 @@ struct WorkspaceView: View {
                 Section("Shadow boundaries") {
                     Stepper("Tonal levels: \(model.parameters.tonalLevels)", value: $model.parameters.tonalLevels, in: 3...10)
                     floatSlider("Sensitivity", value: $model.parameters.shadowSensitivity, range: 0...1)
+                    floatSlider("Region coherence", value: $model.parameters.regionCoherence, range: 0...1)
+                    doubleSlider("Minimum boundary spacing · px", value: $model.parameters.shadowSpacing, range: 0...16)
+                    Toggle("Suppress overlaps with outlines", isOn: $model.parameters.suppressOutlineDuplicates)
                     Stepper("Minimum area: \(model.parameters.minimumRegionArea) px²", value: $model.parameters.minimumRegionArea, in: 1...10000, step: 25)
                     doubleSlider("Dash length · px", value: $model.parameters.dashLength, range: 1...30)
                     doubleSlider("Dash spacing · px", value: $model.parameters.dashSpacing, range: 1...30)
@@ -67,6 +72,11 @@ struct WorkspaceView: View {
                     Text("PDF page size matches the requested dimensions. Select 100% / actual size when printing; verify with a ruler.").font(.caption).foregroundStyle(.secondary)
                 }
                 Section("Inspect processing") {
+                    Button("Verify full resolution") { model.verifyFullResolution() }
+                        .disabled(model.imported == nil || model.isBusy)
+                    Text(model.fullResolutionVerified ? "Showing verified final paths" : "Interactive preview is approximate")
+                        .font(.caption).foregroundStyle(.secondary)
+                    if let text = model.agreementText { Text(text).font(.caption) }
                     Picker("Stage", selection: $model.debugStage) { ForEach(DebugStage.allCases, id: \.self) { Text($0.rawValue).tag($0) } }
                     if let result = model.result { Text("Adaptive thresholds: " + result.segmentation.thresholds.map { String(format: "%.2f", $0) }.joined(separator: ", ")).font(.caption.monospaced()) }
                 }
@@ -83,7 +93,7 @@ struct WorkspaceView: View {
                 }.padding()
                 GeometryReader { geometry in
                     if let source = model.imported {
-                        let aspect = Double(source.preview.width) / Double(source.preview.height)
+                        let aspect = Double(source.width) / Double(source.height)
                         let width = min(geometry.size.width - 32, (geometry.size.height - 32) * aspect)
                         ScrollView([.horizontal, .vertical]) {
                             canvas(source: source)
@@ -137,6 +147,9 @@ struct WorkspaceView: View {
         .onChange(of: model.transparent) { _, _ in model.exportURL = nil }
         .onChange(of: model.inverted) { _, _ in model.exportURL = nil }
         .onChange(of: model.exportFormat) { _, _ in model.exportURL = nil }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
+            model.handleMemoryPressure()
+        }
         .alert("Unable to complete operation", isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) {
             Button("OK", role: .cancel) { model.error = nil }
         } message: { Text(model.error ?? "") }
@@ -149,7 +162,7 @@ struct WorkspaceView: View {
                 if let debug = model.debugImage {
                     Image(decorative: debug, scale: 1).resizable().interpolation(.none)
                 } else if let result = model.result {
-                    Canvas { context, size in
+                    Canvas(rendersAsynchronously: true) { context, size in
                         context.withCGContext { cg in
                             cg.scaleBy(x: size.width / Double(result.width), y: size.height / Double(result.height))
                             StencilRenderer.draw(result, context: cg, styles: model.styles, parameters: model.parameters,

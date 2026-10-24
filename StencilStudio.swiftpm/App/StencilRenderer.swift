@@ -19,9 +19,13 @@ enum StencilRenderer {
             case .highlights: context.setLineDash(phase: 0, lengths: [0.5 * strokeScale, 3 * strokeScale])
             }
             for contour in result.contours(for: kind) {
+                if Task.isCancelled { return }
                 guard let first = contour.points.first else { continue }
                 context.beginPath(); context.move(to: CGPoint(x: first.x, y: first.y))
-                for point in contour.points.dropFirst() { context.addLine(to: CGPoint(x: point.x, y: point.y)) }
+                for (index, point) in contour.points.dropFirst().enumerated() {
+                    if index % 4096 == 0 && Task.isCancelled { return }
+                    context.addLine(to: CGPoint(x: point.x, y: point.y))
+                }
                 if contour.closed { context.closePath() }
                 context.strokePath()
             }
@@ -31,6 +35,7 @@ enum StencilRenderer {
 
     static func image(_ result: StencilResult, styles: [LayerKind: LayerStyle], parameters: Parameters,
                       strokeScale: Double, transparent: Bool, inverted: Bool) throws -> CGImage {
+        try Task.checkCancellation()
         guard let context = CGContext(data: nil, width: result.width, height: result.height, bitsPerComponent: 8,
                                       bytesPerRow: result.width*4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
                                       bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { throw ImportError.allocation }
@@ -40,6 +45,7 @@ enum StencilRenderer {
         }
         context.translateBy(x: 0, y: Double(result.height)); context.scaleBy(x: 1, y: -1)
         draw(result, context: context, styles: styles, parameters: parameters, strokeScale: strokeScale, inverted: inverted)
+        try Task.checkCancellation()
         guard let image = context.makeImage() else { throw ImportError.allocation }
         return image
     }

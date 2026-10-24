@@ -23,12 +23,35 @@ func readPGM(_ url: URL) throws -> GrayImage {
           w > 1, h > 1, w <= Int.max / h, index < bytes.count, whitespace(bytes[index]) else { throw InspectionError.invalidPGM }
     if bytes[index] == 13 && index+1 < bytes.count && bytes[index+1] == 10 { index += 2 } else { index += 1 }
     guard bytes.count - index == w*h else { throw InspectionError.invalidPGM }
+    _ = try ProcessingLimits.device.bounded(width: w, height: h)
     let pixels = bytes[index...].map { byte -> Float in
         let srgb = Float(byte) / 255
         let y = srgb <= 0.04045 ? srgb / 12.92 : pow((srgb + 0.055) / 1.055, 2.4)
         return min(1, max(0, y > 0.008856 ? (116 * pow(y, 1 / Float(3)) - 16) / 100 : 9.03296*y))
     }
     return try GrayImage(width: w, height: h, pixels: pixels)
+}
+
+final class StageMetrics: @unchecked Sendable {
+    private let lock = NSLock()
+    private var previous = ProcessInfo.processInfo.systemUptime
+    private var previousStage = "setup"
+    private var durations: [String: Double] = [:]
+    func checkpoint(_ fraction: Double, _ stage: String) {
+        lock.lock(); defer { lock.unlock() }
+        let now = ProcessInfo.processInfo.systemUptime
+        durations[previousStage, default: 0] += now - previous
+        previous = now; previousStage = stage
+    }
+    func snapshot() -> [String: Double] { lock.lock(); defer { lock.unlock() }; return durations }
+}
+
+func peakResidentBytes() -> Int? {
+    // Linux reports the process high-water RSS in KiB, including import/export.
+    guard let status = try? String(contentsOfFile: "/proc/self/status", encoding: .utf8),
+          let line = status.split(separator: "\n").first(where: { $0.hasPrefix("VmHWM:") }),
+          let kib = line.split(whereSeparator: { $0 == " " || $0 == "\t" }).dropFirst().first.flatMap({ Int($0) }) else { return nil }
+    return kib * 1024
 }
 
 func savePGM(_ values: [UInt8], width: Int, height: Int, to url: URL) throws {
@@ -55,14 +78,23 @@ func svg(_ result: StencilResult, only: LayerKind? = nil) -> String {
 
 do {
     let args = CommandLine.arguments
-    guard args.count == 3 else { throw InspectionError.usage }
+    guard args.count == 3 || args.count == 4 else { throw InspectionError.usage }
+    let previewSize = args.count == 4 ? Int(args[3]) ?? 0 : 900
+    guard (2...1200).contains(previewSize) else { throw InspectionError.usage }
     let source = try readPGM(URL(fileURLWithPath: args[1]))
     let folder = URL(fileURLWithPath: args[2], isDirectory: true)
     try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
     var p = Parameters(); p.highlightsEnabled = true
     let start = ProcessInfo.processInfo.systemUptime
-    let result = try StencilProcessingCoordinator().process(source, parameters: p)
+    let stages = StageMetrics()
+    let result = try StencilProcessingCoordinator().process(source, parameters: p) { fraction, stage in stages.checkpoint(fraction, stage) }
     let seconds = ProcessInfo.processInfo.systemUptime - start
+    let previewImage = try source.downsampled(maximumDimension: previewSize)
+    let previewStart = ProcessInfo.processInfo.systemUptime
+    let preview = try StencilProcessingCoordinator().process(previewImage, parameters: p.forPreview(scale: Double(previewImage.width)/Double(source.width)))
+    let previewSeconds = ProcessInfo.processInfo.systemUptime - previewStart
+    let agreement = try PreviewFidelity.compare(preview: preview, final: result)
+    try svg(preview).write(to: folder.appendingPathComponent("preview.svg"), atomically: true, encoding: .utf8)
     try svg(result).write(to: folder.appendingPathComponent("combined.svg"), atomically: true, encoding: .utf8)
     for layer in LayerKind.allCases {
         try svg(result, only: layer).write(to: folder.appendingPathComponent("\(layer.rawValue).svg"), atomically: true, encoding: .utf8)
@@ -76,13 +108,19 @@ do {
         "outlines": result.outlines.count, "shadows": result.shadows.count, "highlights": result.highlights.count,
         "shortPathsUnderFivePixels": all.filter { $0.length < 5 }.count,
         "closedPaths": all.filter(\.closed).count, "thresholds": result.segmentation.thresholds.map(Double.init),
-        "peakMemory": "Not measured; profile the iPad app using Instruments",
+        "stageSeconds": stages.snapshot(), "previewProcessingSeconds": previewSeconds,
+        "previewWidth": preview.width, "previewHeight": preview.height,
+        "previewAgreement": ["outlines": agreement.outlines.score, "shadows": agreement.shadows.score,
+                             "combined": agreement.score, "tolerancePixels": Double(agreement.tolerancePixels)],
+        "processPeakResidentBytes": peakResidentBytes().map { $0 as Any } ?? NSNull(),
+        "memoryMeasurementScope": "Linux CLI process lifetime including decode, native processing, preview comparison and output. Not an iPad measurement.",
+        "memoryBudgetBytes": ProcessingLimits.device.memoryBudgetBytes,
         "professionalQualityValidated": false
     ]
     let json = try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys])
     try json.write(to: folder.appendingPathComponent("metrics.json"))
     print(String(decoding: json, as: UTF8.self))
 } catch {
-    FileHandle.standardError.write(Data("Inspection failed: \(error). Usage: stencil-inspect reference.pgm output-directory\n".utf8))
+    FileHandle.standardError.write(Data("Inspection failed: \(error). Usage: stencil-inspect reference.pgm output-directory [preview-longest-side]\n".utf8))
     exit(1)
 }

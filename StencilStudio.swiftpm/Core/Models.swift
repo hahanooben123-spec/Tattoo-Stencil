@@ -1,6 +1,20 @@
 import Foundation
 
-public enum StencilError: Error { case invalidImage, invalidParameters }
+public enum StencilError: Error, LocalizedError {
+    case invalidImage, invalidParameters
+    case memoryBudget(required: Int, available: Int)
+    case complexityLimit(String)
+    public var errorDescription: String? {
+        switch self {
+        case .invalidImage: return "The image dimensions or luminance values are invalid."
+        case .invalidParameters: return "One or more processing settings are outside their supported range."
+        case let .memoryBudget(required, available):
+            return "Full-resolution processing needs an estimated minimum of \(required / 1_048_576) MB; the working budget is \(available / 1_048_576) MB. Use a smaller reference or a device with more memory. Resolution was not reduced."
+        case let .complexityLimit(stage):
+            return "The reference exceeds the bounded processing limit for \(stage). Reduce detail or tonal levels, increase noise reduction, or use a smaller reference. Resolution was not reduced."
+        }
+    }
+}
 
 /// Row-major perceptual luminance in [0, 1], in orientation-corrected source coordinates.
 public struct GrayImage: Sendable {
@@ -55,18 +69,35 @@ public struct Parameters: Sendable, Equatable {
     public var highlightsEnabled = false
     public var highlightSensitivity: Float = 0.5
     public var minimumHighlightArea = 80
+    public var textureSuppression: Float = 0.55
+    public var regionCoherence: Float = 0.5
+    public var shadowSpacing: Double = 3
+    public var suppressOutlineDuplicates = true
+    /// Internal analysis scale, relative to original pixels. Use forPreview(scale:).
+    public var samplingScale: Double = 1
     public init() {}
     public func validate() throws {
-        let bounded: [Float] = [noiseReduction, detail, shadowSensitivity, highlightSensitivity]
+        let bounded: [Float] = [noiseReduction, detail, shadowSensitivity, highlightSensitivity, textureSuppression, regionCoherence]
         guard bounded.allSatisfy({ $0.isFinite && (0...1).contains($0) }),
               contrast.isFinite, (0.1...3).contains(contrast),
               edgeThreshold.isFinite, (0.001...2).contains(edgeThreshold),
               (3...10).contains(tonalLevels), minimumRegionArea > 0, minimumHighlightArea > 0,
               minimumContourLength.isFinite, minimumContourLength >= 0,
               smoothing.isFinite, (0...2).contains(smoothing),
-              dashLength.isFinite, dashLength > 0, dashSpacing.isFinite, dashSpacing > 0 else {
+              dashLength.isFinite, dashLength > 0, dashSpacing.isFinite, dashSpacing > 0,
+              shadowSpacing.isFinite, (0...16).contains(shadowSpacing),
+              samplingScale.isFinite, samplingScale > 0, samplingScale <= 1 else {
             throw StencilError.invalidParameters
         }
+    }
+    public func forPreview(scale: Double) throws -> Parameters {
+        guard scale.isFinite, scale > 0, scale <= 1 else { throw StencilError.invalidParameters }
+        var p = self
+        p.samplingScale *= scale
+        p.minimumContourLength *= scale; p.smoothing *= scale; p.shadowSpacing *= scale
+        p.minimumRegionArea = max(1, Int((Double(minimumRegionArea) * scale * scale).rounded()))
+        p.minimumHighlightArea = max(1, Int((Double(minimumHighlightArea) * scale * scale).rounded()))
+        return p
     }
 }
 public enum Preset: String, CaseIterable {

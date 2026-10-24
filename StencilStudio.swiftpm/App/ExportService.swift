@@ -9,9 +9,13 @@ enum ExportService {
     static func export(_ result: StencilResult, styles: [LayerKind: LayerStyle], parameters: Parameters,
                        widthMM: Double, transparent: Bool, inverted: Bool, format: ExportFormat) throws -> URL {
         guard widthMM.isFinite, widthMM >= 10, widthMM <= 2000 else { throw StencilError.invalidParameters }
+        _ = try ProcessingLimits.device.bounded(width: result.width, height: result.height)
+        try Task.checkCancellation()
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("StencilExports", isDirectory: true)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let url = folder.appendingPathComponent("Stencil-\(UUID().uuidString).\(format == .png ? "png" : "pdf")")
+        var completed = false
+        defer { if !completed { try? FileManager.default.removeItem(at: url) } }
         if format == .png {
             let image = try StencilRenderer.image(result, styles: styles, parameters: parameters, strokeScale: 1, transparent: transparent, inverted: inverted)
             guard let destination = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil) else { throw ImportError.allocation }
@@ -31,6 +35,8 @@ enum ExportService {
                 StencilRenderer.draw(result, context: c, styles: styles, parameters: parameters, strokeScale: 1, inverted: inverted)
             }
         }
+        try Task.checkCancellation()
+        completed = true
         return url
     }
 }

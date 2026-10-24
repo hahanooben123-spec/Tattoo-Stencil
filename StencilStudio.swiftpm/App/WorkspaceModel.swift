@@ -1,6 +1,12 @@
 import SwiftUI
 import StencilCore
 
+private struct ProcessingDelivery: Sendable {
+    let result: StencilResult
+    let agreement: PreviewAgreement?
+    let exportURL: URL?
+}
+
 @MainActor
 final class WorkspaceModel: ObservableObject {
     @Published var parameters = Preset.portrait.parameters
@@ -18,34 +24,47 @@ final class WorkspaceModel: ObservableObject {
     @Published var exportFormat = ExportFormat.png
     @Published var debugStage = DebugStage.stencil
     @Published var debugImage: CGImage?
-    private var worker: Task<StencilResult, Error>?
+    @Published private(set) var fullResolutionVerified = false
+    @Published private(set) var agreement: PreviewAgreement?
+    private var worker: Task<ProcessingDelivery, Error>?
     private var importWorker: Task<ImportedImage, Error>?
     private var debounce: Task<Void, Never>?
+    private var debugTask: Task<Void, Never>?
     private var revision = UUID()
+    private let lane = ProcessingLane()
+    private var processedParameters: Parameters?
 
     var sourceSize: String {
-        guard let source = imported?.original else { return "No reference" }
+        guard let source = imported else { return "No reference" }
         return "\(source.width) × \(source.height) px"
     }
     var previewScale: Double {
-        guard let source = imported?.original, let result else { return 1 }
+        guard let source = imported, let result else { return 1 }
         return Double(result.width) / Double(source.width)
     }
     var heightMM: Double {
-        guard let source = imported?.original else { return widthMM }
+        guard let source = imported else { return widthMM }
         return widthMM * Double(source.height) / Double(source.width)
+    }
+    var agreementText: String? {
+        guard let agreement else { return nil }
+        return "Preview/final: outlines \(Int(agreement.outlines.score * 100))%, shadows \(Int(agreement.shadows.score * 100))% within \(agreement.tolerancePixels) preview pixels. Showing final paths."
     }
 
     func cancel() {
-        revision = UUID(); worker?.cancel(); importWorker?.cancel(); debounce?.cancel()
+        revision = UUID(); worker?.cancel(); importWorker?.cancel(); debounce?.cancel(); debugTask?.cancel()
+        worker = nil; importWorker = nil; debounce = nil; debugTask = nil
         isBusy = false; status = "Cancelled"
     }
 
     func importData(_ data: Data) {
         cancel(); result = nil; debugImage = nil; imported = nil; exportURL = nil
-        isBusy = true; progress = 0; status = "Decoding reference"
-        let id = revision
-        let task = Task.detached(priority: .userInitiated) { try ImageImportService.load(data) }
+        agreement = nil; fullResolutionVerified = false; processedParameters = nil
+        isBusy = true; progress = 0; status = "Decoding reference thumbnail"
+        let id = revision, lane = lane
+        let task = Task.detached(priority: .userInitiated) {
+            try await lane.run { try ImageImportService.load(data) }
+        }
         importWorker = task
         Task {
             do {
@@ -58,85 +77,110 @@ final class WorkspaceModel: ObservableObject {
 
     func schedulePreview() {
         guard let imported else { return }
-        cancel(); exportURL = nil
-        let id = revision, source = imported.preview
-        // Length and area controls are specified in native source pixels.
-        let scale = Double(source.width) / Double(imported.original.width)
-        var p = parameters
-        p.minimumContourLength *= scale
-        p.minimumRegionArea = max(1, Int(Double(p.minimumRegionArea) * scale * scale))
-        p.minimumHighlightArea = max(1, Int(Double(p.minimumHighlightArea) * scale * scale))
-        p.smoothing *= scale
-        let snapshot = p
-        isBusy = true; progress = 0; status = "Preview pending"
+        cancel(); exportURL = nil; agreement = nil
+        result = nil; debugImage = nil; fullResolutionVerified = false; processedParameters = nil
+        let id = revision, source = imported.preview, p = parameters, lane = lane
+        let scale = Double(source.width) / Double(imported.width)
+        isBusy = true; progress = 0; status = "Approximate preview pending"
         debounce = Task {
             do {
                 try await Task.sleep(for: .milliseconds(280))
                 guard !Task.isCancelled, revision == id else { return }
+                let callback = progressCallback(id: id, prefix: "Preview · ")
                 let task = Task.detached(priority: .userInitiated) {
-                    try StencilProcessingCoordinator().process(source, parameters: snapshot) { [weak self] fraction, stage in
-                        Task { @MainActor in
-                            guard let self, self.revision == id else { return }
-                            self.progress = fraction; self.status = stage
-                        }
+                    try await lane.run {
+                        let output = try StencilProcessingCoordinator().process(source, parameters: p.forPreview(scale: scale), progress: callback)
+                        return ProcessingDelivery(result: output, agreement: nil, exportURL: nil)
                     }
                 }
                 worker = task
                 let output = try await task.value
                 guard revision == id else { return }
-                result = output; worker = nil; updateDebug(); isBusy = false
-                status = "Preview · \(output.outlines.count) outlines · \(output.shadows.count) shadow paths"
+                result = output.result; processedParameters = p; worker = nil; isBusy = false; updateDebug()
+                status = "Approximate preview · verify full resolution before transfer"
             } catch { finish(error, revision: id) }
         }
     }
 
     func updateDebug() {
+        debugTask?.cancel(); debugImage = nil
         guard let result, debugStage != .stencil else { debugImage = nil; return }
-        debugImage = try? StencilRenderer.debugImage(result, stage: debugStage)
+        let id = revision, stage = debugStage, lane = lane
+        debugTask = Task {
+            do {
+                let image = try await lane.run { try StencilRenderer.debugImage(result, stage: stage) }
+                guard revision == id, debugStage == stage else { return }
+                debugImage = image
+            } catch { if revision == id { debugImage = nil } }
+        }
     }
 
-    func export() {
+    func export() { runFullResolution(exporting: true) }
+    func verifyFullResolution() { runFullResolution(exporting: false) }
+
+    func handleMemoryPressure() {
+        cancel(); result = nil; debugImage = nil; agreement = nil
+        fullResolutionVerified = false; processedParameters = nil; exportURL = nil
+        status = "Memory pressure: processing cancelled. Reference retained; try a smaller image."
+    }
+
+    private func runFullResolution(exporting: Bool) {
         guard let imported else { return }
-        cancel(); exportURL = nil
-        let id = revision, p = parameters, image = imported.original
+        let cached = fullResolutionVerified && processedParameters == parameters ? result : nil
+        let preview = !fullResolutionVerified ? result : nil
+        cancel(); exportURL = nil; result = nil; debugImage = nil; fullResolutionVerified = false
+        let id = revision, p = parameters, lane = lane, limits = ProcessingLimits.device
         let styles = styles, mm = widthMM, transparent = transparent, inverted = inverted, format = exportFormat
-        isBusy = true; progress = 0; status = "Full-resolution processing"
+        let previousAgreement = agreement
+        isBusy = true; progress = 0; status = "Checking full-resolution memory budget"
+        let callback = progressCallback(id: id, prefix: "Full resolution · ")
         let task = Task.detached(priority: .userInitiated) {
-            let input = try ImageImportService.luminance(image)
-            return try StencilProcessingCoordinator().process(input, parameters: p) { [weak self] fraction, stage in
-                Task { @MainActor in
-                    guard let self, self.revision == id else { return }
-                    self.progress = fraction; self.status = "Full resolution · " + stage
+            try await lane.run {
+                _ = try limits.bounded(width: imported.width, height: imported.height)
+                let output: StencilResult
+                if let cached { output = cached }
+                else {
+                    let input = try ImageImportService.fullLuminance(imported, limits: limits)
+                    output = try StencilProcessingCoordinator().process(input, parameters: p, limits: limits, progress: callback)
                 }
+                try Task.checkCancellation()
+                let agreement = try preview.map { try PreviewFidelity.compare(preview: $0, final: output) } ?? previousAgreement
+                let url = exporting ? try ExportService.export(output, styles: styles, parameters: p, widthMM: mm,
+                                                               transparent: transparent, inverted: inverted, format: format) : nil
+                try Task.checkCancellation()
+                return ProcessingDelivery(result: output, agreement: agreement, exportURL: url)
             }
         }
         worker = task
         Task {
             do {
-                let output = try await task.value
+                let delivery = try await task.value
                 guard revision == id else { return }
-                status = "Rendering export"
-                let url = try await Task.detached(priority: .userInitiated) {
-                    try ExportService.export(output, styles: styles, parameters: p, widthMM: mm,
-                                             transparent: transparent, inverted: inverted, format: format)
-                }.value
-                guard revision == id else { return }
-                worker = nil; isBusy = false
+                result = delivery.result; processedParameters = p; fullResolutionVerified = true; agreement = delivery.agreement
+                worker = nil; isBusy = false; updateDebug()
                 guard self.styles == styles, self.widthMM == mm, self.transparent == transparent,
                       self.inverted == inverted, self.exportFormat == format else {
-                    status = "Export settings changed; generate again"
+                    status = "Full-resolution paths verified; export settings changed"
                     return
                 }
-                exportURL = url
-                status = "Export ready · \(output.width) × \(output.height) px · \(Int(mm)) mm wide"
+                exportURL = delivery.exportURL
+                status = "\(exporting ? "Export ready" : "Full resolution verified") · \(delivery.result.width) × \(delivery.result.height) px"
             } catch { finish(error, revision: id) }
         }
     }
 
+    private func progressCallback(id: UUID, prefix: String) -> @Sendable (Double, String) -> Void {
+        { [weak self] fraction, stage in
+            Task { @MainActor in
+                guard let self, self.revision == id, self.isBusy else { return }
+                self.progress = fraction; self.status = prefix + stage
+            }
+        }
+    }
     private func finish(_ failure: Error, revision id: UUID) {
         guard revision == id else { return }
-        isBusy = false
+        worker = nil; importWorker = nil; isBusy = false
         if failure is CancellationError { status = "Cancelled" }
-        else { error = failure.localizedDescription; status = "Processing failed" }
+        else { error = failure.localizedDescription; status = "Processing stopped" }
     }
 }

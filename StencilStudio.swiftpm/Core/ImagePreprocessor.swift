@@ -11,9 +11,9 @@ public struct ImagePreprocessor: Sendable {
         let w = image.width, h = image.height
         var output = image.pixels
         if p.noiseReduction > 0 {
-            let radius = p.noiseReduction > 0.65 ? 3 : 2
+            let radius = max(1, Int(((p.noiseReduction > 0.65 ? 3.0 : 2.0) * p.samplingScale).rounded()))
             let rangeSigma = 0.025 + Double(p.noiseReduction) * 0.12
-            let spatialSigma = 0.8 + Double(p.noiseReduction)
+            let spatialSigma = max(0.45, (0.8 + Double(p.noiseReduction)) * p.samplingScale)
             var kernel: [(Int, Int, Double)] = []
             for dy in -radius...radius { for dx in -radius...radius {
                 kernel.append((dx, dy, exp(-Double(dx * dx + dy * dy) / (2 * spatialSigma * spatialSigma))))

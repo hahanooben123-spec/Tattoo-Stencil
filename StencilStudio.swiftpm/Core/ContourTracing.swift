@@ -36,8 +36,10 @@ private func trace(_ graph: [Int: [Int]], stride: Int, offset: Double) throws ->
 
 public struct StructuralContourTracer: Sendable {
     public init() {}
-    public func traceEdges(_ edges: [UInt8], width w: Int, height h: Int) throws -> [Contour] {
+    public func traceEdges(_ edges: [UInt8], width w: Int, height h: Int,
+                           maximumLinks: Int = 400_000) throws -> [Contour] {
         var graph: [Int: [Int]] = [:]
+        var links = 0
         for y in 0..<h {
             try Task.checkCancellation()
             for x in 0..<w where edges[y*w+x] != 0 {
@@ -48,6 +50,8 @@ public struct StructuralContourTracer: Sendable {
                     // Avoid diagonal shortcuts where an orthogonal connection exists.
                     if dx != 0 && dy != 0 && (edges[y*w+nx] != 0 || edges[ny*w+x] != 0) { continue }
                     let j = ny*w+nx
+                    links += 1
+                    guard links <= maximumLinks else { throw StencilError.complexityLimit("structural contours") }
                     graph[i, default: []].append(j); graph[j, default: []].append(i)
                 }
             }
@@ -58,11 +62,12 @@ public struct StructuralContourTracer: Sendable {
 
 public struct ShadowBoundaryGenerator: Sendable {
     public init() {}
-    public func generate(_ segmentation: Segmentation, width: Int, height: Int, sensitivity: Float) throws -> [Contour] {
+    public func generate(_ segmentation: Segmentation, width: Int, height: Int, sensitivity: Float,
+                         maximumLinks: Int = 400_000) throws -> [Contour] {
         let centers = segmentation.centers
         // Similar neighboring clusters can be ignored without suppressing deeper transitions.
         let minimumDifference = 0.02 + (1 - sensitivity) * 0.14
-        return try regionBoundaries(segmentation.labels, width: width, height: height) { a, b in
+        return try regionBoundaries(segmentation.labels, width: width, height: height, maximumLinks: maximumLinks) { a, b in
             abs(centers[Int(a)] - centers[Int(b)]) >= minimumDifference
         }
     }
@@ -70,24 +75,28 @@ public struct ShadowBoundaryGenerator: Sendable {
 
 public struct HighlightBoundaryGenerator: Sendable {
     public init() {}
-    public func generate(_ image: GrayImage, sensitivity: Float, minimumArea: Int) throws -> [Contour] {
+    public func generate(_ image: GrayImage, sensitivity: Float, minimumArea: Int,
+                         limits: ProcessingLimits = ProcessingLimits()) throws -> [Contour] {
         let threshold: Float = 0.98 - sensitivity * 0.22
         var labels = image.pixels.map { UInt8($0 >= threshold ? 1 : 0) }
-        try suppressSmallRegions(&labels, width: image.width, height: image.height, minimumArea: minimumArea)
+        try suppressSmallRegions(&labels, width: image.width, height: image.height, minimumArea: minimumArea, limits: limits)
         // Bilateral preprocessing and the high threshold reduce small bright pixel noise.
         // Local contrast screening is deferred to Phase 2; this is opt-in experimental output.
-        return try regionBoundaries(labels, width: image.width, height: image.height) { _, _ in true }
+        return try regionBoundaries(labels, width: image.width, height: image.height, maximumLinks: limits.maximumGraphLinks) { _, _ in true }
     }
 }
 
 /// Shared pixel-cell borders are emitted once, grouped by label pair. No synthetic
 /// boundary is drawn along the outer image frame. Coordinates span [0, width] × [0, height].
-private func regionBoundaries(_ labels: [UInt8], width w: Int, height h: Int,
+private func regionBoundaries(_ labels: [UInt8], width w: Int, height h: Int, maximumLinks: Int,
                               include: (UInt8, UInt8) -> Bool) throws -> [Contour] {
     let stride = w + 1
     var graphs: [Int: [Int: [Int]]] = [:]
-    func add(_ a: Int, _ b: Int, _ first: UInt8, _ second: UInt8) {
+    var links = 0
+    func add(_ a: Int, _ b: Int, _ first: UInt8, _ second: UInt8) throws {
         guard first != second, include(first, second) else { return }
+        links += 1
+        guard links <= maximumLinks else { throw StencilError.complexityLimit("tonal boundary paths") }
         let pair = Int(min(first, second)) * 256 + Int(max(first, second))
         graphs[pair, default: [:]][a, default: []].append(b)
         graphs[pair, default: [:]][b, default: []].append(a)
@@ -96,8 +105,8 @@ private func regionBoundaries(_ labels: [UInt8], width w: Int, height h: Int,
         try Task.checkCancellation()
         for x in 0..<w {
             let i = y*w+x
-            if x+1 < w { add(y*stride+x+1, (y+1)*stride+x+1, labels[i], labels[i+1]) }
-            if y+1 < h { add((y+1)*stride+x, (y+1)*stride+x+1, labels[i], labels[i+w]) }
+            if x+1 < w { try add(y*stride+x+1, (y+1)*stride+x+1, labels[i], labels[i+1]) }
+            if y+1 < h { try add((y+1)*stride+x, (y+1)*stride+x+1, labels[i], labels[i+w]) }
         }
     }
     var result: [Contour] = []

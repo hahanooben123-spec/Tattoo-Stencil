@@ -14,8 +14,10 @@ enum ImportError: LocalizedError {
 }
 
 struct ImportedImage: @unchecked Sendable {
-    // CGImage is immutable. Orientation is already baked into the pixels.
-    let original: CGImage
+    // Retain compressed bytes; full-resolution pixels are decoded only in the lane.
+    let encoded: Data
+    let width: Int
+    let height: Int
     let preview: GrayImage
     let previewImage: CGImage
 }
@@ -27,22 +29,36 @@ enum ImageImportService {
               let width = metadata[kCGImagePropertyPixelWidth] as? Int,
               let height = metadata[kCGImagePropertyPixelHeight] as? Int else { throw ImportError.unreadable }
         try Task.checkCancellation()
-        // Transform orientation at native resolution; do not reduce export dimensions.
+        guard width > 1, height > 1, width <= Int.max / height else { throw ImportError.unreadable }
+        let orientation = (metadata[kCGImagePropertyOrientation] as? Int) ?? 1
+        let rotated = (5...8).contains(orientation)
+        // Decode only the interactive thumbnail at import time.
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true,
-            kCGImageSourceThumbnailMaxPixelSize: max(width, height)
+            kCGImageSourceThumbnailMaxPixelSize: 900
         ]
-        guard let original = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { throw ImportError.unreadable }
-        let preview = try luminance(original, maximumDimension: 900)
-        let previewImage = try resized(original, width: preview.width, height: preview.height)
-        return ImportedImage(original: original, preview: preview, previewImage: previewImage)
+        guard let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { throw ImportError.unreadable }
+        let preview = try luminance(thumbnail)
+        return ImportedImage(encoded: data, width: rotated ? height : width, height: rotated ? width : height,
+                             preview: preview, previewImage: thumbnail)
     }
 
-    static func luminance(_ image: CGImage, maximumDimension: Int? = nil) throws -> GrayImage {
-        let scale = maximumDimension.map { min(1, Double($0) / Double(max(image.width, image.height))) } ?? 1
-        let w = max(2, Int((Double(image.width) * scale).rounded()))
-        let h = max(2, Int((Double(image.height) * scale).rounded()))
+    static func fullLuminance(_ imported: ImportedImage, limits: ProcessingLimits) throws -> GrayImage {
+        _ = try limits.bounded(width: imported.width, height: imported.height)
+        try Task.checkCancellation()
+        guard let source = CGImageSourceCreateWithData(imported.encoded as CFData, nil) else { throw ImportError.unreadable }
+        let options: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true,
+                                      kCGImageSourceCreateThumbnailWithTransform: true,
+                                      kCGImageSourceThumbnailMaxPixelSize: max(imported.width, imported.height)]
+        guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary),
+              image.width == imported.width, image.height == imported.height else { throw ImportError.unreadable }
+        try Task.checkCancellation()
+        return try luminance(image)
+    }
+
+    static func luminance(_ image: CGImage) throws -> GrayImage {
+        let w = image.width, h = image.height
         guard image.width > 1, image.height > 1, w <= Int.max / h / 4 else { throw StencilError.invalidImage }
         var bytes = [UInt8](repeating: 255, count: w*h*4)
         let didDraw = bytes.withUnsafeMutableBytes { storage -> Bool in
@@ -69,13 +85,4 @@ enum ImageImportService {
         return try GrayImage(width: w, height: h, pixels: pixels)
     }
 
-    static func resized(_ image: CGImage, width: Int, height: Int) throws -> CGImage {
-        guard let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8,
-                                      bytesPerRow: width*4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
-                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { throw ImportError.allocation }
-        context.interpolationQuality = .high
-        context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
-        guard let result = context.makeImage() else { throw ImportError.allocation }
-        return result
-    }
 }

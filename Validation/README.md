@@ -4,7 +4,7 @@ The engine has synthetic algorithm tests, but **no artist-reviewed realism refer
 
 Keep your own licensed references locally in the gitignored `Validation/PrivateReferences` directory. Use six categories: human portrait, lion portrait, realistic rose, classical statue, black-and-grey skull, and complex animal fur. Include several exposures, backgrounds and resolutions for each. Avoid identifiable client photographs in public source control.
 
-Run the validation CLI documented in the root README on grayscale P5 PGM copies. Save the original color file for iPad import tests. Record the image identifier, source dimensions, grayscale conversion method, preset, exact parameters, hardware, compiler/configuration and app revision alongside each results folder. CLI output uses the default parameters with experimental highlights enabled. Its duration excludes file reading and SVG writing, and is a host measurement, not an iPad benchmark.
+Run the validation CLI documented in the root README on grayscale P5 PGM copies. Save the original color file for iPad import tests. Record the image identifier, source dimensions, grayscale conversion method, preset, exact parameters, hardware, compiler/configuration and app revision alongside each results folder. CLI output uses the default parameters with experimental highlights enabled. Native processing duration excludes file reading and SVG writing; preview processing is reported separately. Linux peak RSS covers the complete process lifetime, including input/output and both resolutions. These are host measurements, not iPad benchmarks.
 
 For each reference, review `combined.svg` against the original at identical size. Review all three layer SVGs separately and use `edges.pgm`, `preprocessed.pgm`, `tones.pgm`, and `metrics.json` to understand each generated line. Histogram thresholds explain tone transitions; the edge stage explains outlines. These debugging views do not yet provide per-path confidence or provenance IDs.
 
@@ -31,3 +31,20 @@ Do not use a single automatic score as acceptance. Have a realism tattoo artist 
 6. Export a 150 mm-wide PDF and check its MediaBox is 425.19685 points wide. Print at actual size on suitable paper and measure the result. Verify driver margins do not clip the design.
 7. Verify Photos/Files/share-sheet flows on an actual iPad and run offline in airplane mode with locally stored images. Cloud-only Photos/Files items must be downloaded before offline import.
 8. Record failures and artist feedback before claiming professional quality. Apple Pencil/manual edits and dedicated print UI are outside this first version.
+
+## Quality and resource regression checks
+
+The `QualityAndResourceTests` suite verifies texture suppression without deleting strong thin features, tone-aware merging, strong tonal boundary preservation, duplicate/concentric path removal, clipping without shortcuts, fractional preview spacing, memory rejection before work, region/path limits, pixel/area scaling, area resampling, preview agreement, and cancellation before and during processing. These are deterministic synthetic checks; they do not replace the six real-reference categories.
+
+Run the reproducible geometry/texture fixture:
+
+```sh
+python Tools/make-validation-fixture.py Validation/Results/quality-reference.pgm
+swift run -c release stencil-inspect Validation/Results/quality-reference.pgm Validation/Results/synthetic 450
+```
+
+`preview.svg` has a 450-pixel longest side. `combined.svg` retains the source's 1536 × 1024 coordinates. The JSON reports per-layer agreement with a two-preview-pixel tolerance; inspect both scores rather than treating the combined average as an acceptance criterion. Very thin lines, shadow threshold changes and conservative pixel spacing can differ with resolution. Always inspect verified native geometry in the app.
+
+A release run in the local Linux/Docker environment on October 24, 2026 measured approximately 0.44 s native processing, 0.027 s preview processing, and 68 MiB process peak RSS for this fixture. Outline agreement was 97%; shadow agreement was 79%. These are one synthetic run's observations, not device performance targets or proof of realism quality. The earlier fractional mask leaked shadow duplicates; conservative cell coverage improved this fixture's shadow agreement from 46% to 79% without moving contour coordinates.
+
+On an iPad, also test **Verify full resolution**, cache reuse during export, invalidation after detection changes, and memory warnings. A high-resolution file should still import a thumbnail even when native verification exceeds the budget. Verification/export must fail explicitly instead of silently exporting preview dimensions. The memory policy is conservative but cannot guarantee safety under all OS pressure; full tiling remains future work.
