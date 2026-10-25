@@ -1,0 +1,43 @@
+name: Local AI iPad prototype
+on:
+  push:
+    paths: ['LocalAIPrototype/**', '.github/workflows/local-ai-ipad.yml']
+  pull_request:
+    paths: ['LocalAIPrototype/**', '.github/workflows/local-ai-ipad.yml']
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare Xcode project
+        run: |
+          brew install xcodegen
+          xcodegen generate --spec LocalAIPrototype/project.yml
+      - uses: actions/cache@v4
+        with:
+          path: .build/local-ai/SourcePackages
+          key: ipad-ai-packages-${{ runner.os }}-8868a968
+      - name: Build real local engine for iPad
+        run: |
+          set -o pipefail
+          xcodebuild -project LocalAIPrototype/StencilLocalAI.xcodeproj -scheme StencilLocalAI \
+            -configuration Release -destination 'generic/platform=iOS' \
+            -derivedDataPath .build/local-ai -clonedSourcePackagesDirPath .build/local-ai/SourcePackages \
+            CODE_SIGNING_ALLOWED=NO build > .build/local-ai-build.log 2>&1 || {
+              tail -180 .build/local-ai-build.log; exit 1;
+            }
+      - name: Package unsigned app for review
+        run: |
+          mkdir -p .build/local-ai-package/Payload
+          cp -R .build/local-ai/Build/Products/Release-iphoneos/StencilLocalAI.app .build/local-ai-package/Payload/
+          cd .build/local-ai-package
+          ditto -c -k --sequesterRsrc --keepParent Payload StencilLocalAI-unsigned.ipa
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: local-ai-ipad-build
+          path: |
+            .build/local-ai-build.log
+            .build/local-ai-package/StencilLocalAI-unsigned.ipa
+          retention-days: 14
