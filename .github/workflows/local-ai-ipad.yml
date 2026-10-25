@@ -21,6 +21,7 @@ jobs:
       - name: Build real local engine for iPad
         run: |
           set -o pipefail
+          mkdir -p .build
           xcodebuild -project LocalAIPrototype/StencilLocalAI.xcodeproj -scheme StencilLocalAI \
             -configuration Release -destination 'generic/platform=iOS' \
             -derivedDataPath .build/local-ai -clonedSourcePackagesDirPath .build/local-ai/SourcePackages \
