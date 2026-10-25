@@ -1,5 +1,9 @@
 # Local stencil model prototype
 
+[Source-only prompt tests](PROMPT-TEST.md) produced much cleaner stencil-style
+drawings on an eye and the earlier portrait. They used the built-in image tool,
+not a local FLUX model; precise geometry and iPad deployment remain unverified.
+
 The next supervised experiment is documented in [TRAINING-PILOT.md](TRAINING-PILOT.md).
 The initial smoke run tests training mechanics only. The subsequent
 [provisional collage pilot](COLLAGE-PILOT.md) uses two approximately registered
