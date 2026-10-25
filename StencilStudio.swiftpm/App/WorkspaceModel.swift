@@ -1,4 +1,5 @@
 import SwiftUI
+import ImageIO
 import StencilCore
 
 private struct ImportDelivery: Sendable { let image: ImportedImage; let engine: InteractivePreviewEngine }
@@ -34,6 +35,12 @@ final class WorkspaceModel: ObservableObject {
     @Published var debugImage: CGImage?
     @Published private(set) var fullResolutionVerified = false
     @Published private(set) var agreement: PreviewAgreement?
+    @Published private(set) var pcPairing = PCConnectionStore.load()
+    @Published private(set) var pcMode = false
+    @Published private(set) var pcImage: CGImage?
+    private var pcTask: Task<Void,Never>?
+    private var pcClient: PCStencilClient?
+    private var pcJobID: String?
     private var importWorker: Task<ImportDelivery,Error>?
     private var nativeWorker: Task<NativeDelivery,Error>?
     private var previewWorker: Task<PreviewDelivery,Error>?
@@ -66,6 +73,7 @@ final class WorkspaceModel: ObservableObject {
         return Double(drawing.width)/Double(source.width)
     }
     var heightMM: Double {
+        if let pcImage { return widthMM*Double(pcImage.height)/Double(pcImage.width) }
         guard let source = imported else { return widthMM }
         return widthMM*Double(source.height)/Double(source.width)
     }
@@ -78,6 +86,7 @@ final class WorkspaceModel: ObservableObject {
         catch { self.error = error.localizedDescription }
     }
     func parametersChanged(from previous: Parameters) {
+        guard !pcMode else { return }
         if parameters.hasSameGeometry(as: previous) {
             if processedParameters != nil { processedParameters = parameters }
             exportURL = nil
@@ -101,6 +110,9 @@ final class WorkspaceModel: ObservableObject {
         pendingPreview = nil; renderingQuality = nil
     }
     func cancel() {
+        pcTask?.cancel(); pcTask = nil
+        if let client = pcClient, let job = pcJobID { Task { await client.cancel(job) } }
+        pcClient = nil; pcJobID = nil
         operationRevision = UUID(); subjectRevision = UUID()
         nativeWorker?.cancel(); importWorker?.cancel(); subjectWorker?.cancel(); stopPreview()
         nativeWorker = nil; importWorker = nil; subjectWorker = nil
@@ -108,6 +120,7 @@ final class WorkspaceModel: ObservableObject {
     }
     func importData(_ data: Data) {
         cancel(); result = nil; drawing = nil; lastPreview = nil; engine = nil; imported = nil; debugImage = nil
+        pcMode = false; pcImage = nil
         exportURL = nil; agreement = nil; fullResolutionVerified = false; processedParameters = nil
         subjectPoint = nil; cachedSubject = nil; subjectStatus = "Finder motiv …"
         progress = 0; status = "Åbner billede"
@@ -133,6 +146,7 @@ final class WorkspaceModel: ObservableObject {
     /// Vision has its own lifetime, keyed only by source/subject selection. Slider
     /// changes neither cancel nor rerun inference. Draft feedback need not await it.
     private func resolveSubject() {
+        guard !pcMode else { return }
         guard let imported else { return }
         subjectWorker?.cancel(); subjectRevision = UUID(); cachedSubject = nil
         stopPreview()
@@ -164,6 +178,7 @@ final class WorkspaceModel: ObservableObject {
     }
 
     func schedulePreview() {
+        guard !pcMode else { return }
         guard imported != nil, engine != nil else { return }
         nativeWorker?.cancel(); nativeWorker = nil; operationRevision = UUID()
         exportURL = nil; agreement = nil
@@ -232,6 +247,7 @@ final class WorkspaceModel: ObservableObject {
     }
 
     func updateDebug() {
+        guard !pcMode else { return }
         debugTask?.cancel(); debugImage = nil
         guard let result, debugStage != .stencil else { return }
         let context = previewContext, id = requestID, stage = debugStage, lane = lane
@@ -243,11 +259,81 @@ final class WorkspaceModel: ObservableObject {
             } catch { }
         }
     }
-    func export() { runFullResolution(exporting: true) }
-    func verifyFullResolution() { runFullResolution(exporting: false) }
+    func export() {
+        if pcMode {
+            guard let pcImage else { return }
+            do { exportURL = try ExportService.exportRaster(pcImage,widthMM:widthMM,format:exportFormat); status = "Eksport klar" }
+            catch { self.error = error.localizedDescription }
+        } else { runFullResolution(exporting: true) }
+    }
+    func verifyFullResolution() {
+        if pcMode { status = "PC-resultatet vises i sin fulde opløsning · kontrollér øjne, proportioner og detaljer" }
+        else { runFullResolution(exporting: false) }
+    }
+    func pairPC(_ code: String) async throws {
+        let pairing = try PCPairing(data:Data(code.trimmingCharacters(in:.whitespacesAndNewlines).utf8))
+        try await PCStencilClient(pairing).check()
+        try PCConnectionStore.save(pairing)
+        pcPairing = pairing
+    }
+    func forgetPC() { PCConnectionStore.remove(); pcPairing = nil }
+    func useLocalEngine() {
+        cancel(); pcMode = false; pcImage = nil; exportURL = nil; resolveSubject()
+    }
+    func generateOnPC() {
+        guard let imported, let pairing = pcPairing else { return }
+        cancel(); pcMode = true; pcImage = nil; exportURL = nil; debugImage = nil
+        subjectWorker = nil; result = nil; drawing = nil; fullResolutionVerified = false; agreement = nil
+        let revision = operationRevision
+        progress = 0; status = "Sender billede til PC"
+        pcTask = Task {
+            var submitted: String?
+            var client: PCStencilClient?
+            do {
+                let connection = try PCStencilClient(pairing)
+                client = connection; pcClient = connection
+                let upload = try await Task.detached(priority:.userInitiated) { try PCStencilClient.upload(imported.encoded) }.value
+                try Task.checkCancellation()
+                let first = try await connection.submit(upload)
+                submitted = first.id
+                guard operationRevision == revision, !Task.isCancelled else { await connection.cancel(first.id); return }
+                pcJobID = first.id
+                let deadline = Date().addingTimeInterval(15*60)
+                while true {
+                    try Task.checkCancellation()
+                    guard Date() < deadline else { throw PCStencilFailure(message:"PC'en brugte for lang tid. Prøv igen.") }
+                    let job = try await connection.status(first.id)
+                    guard operationRevision == revision else { await connection.cancel(first.id); return }
+                    progress = job.progress; status = job.message
+                    if job.status == "done" {
+                        let data = try await connection.image(first.id)
+                        try Task.checkCancellation()
+                        guard operationRevision == revision else { return }
+                        guard let source = CGImageSourceCreateWithData(data as CFData,nil),
+                              let raster = CGImageSourceCreateImageAtIndex(source,0,nil),
+                              raster.width <= 2048, raster.height <= 2048 else { throw ImportError.allocation }
+                        pcImage = raster
+                        status = "PC-stencil klar · sammenlign øjne og proportioner med originalen"
+                        break
+                    }
+                    if job.status == "error" || job.status == "cancelled" { throw PCStencilFailure(message:job.message) }
+                    try await Task.sleep(for:.seconds(1))
+                }
+            } catch {
+                if let client, let submitted { await client.cancel(submitted) }
+                guard operationRevision == revision else { return }
+                if !(error is CancellationError) { self.error = error.localizedDescription }
+                status = "PC-behandling stoppet · prøv igen eller vælg lokal motor"
+            }
+            guard operationRevision == revision else { return }
+            pcTask = nil; pcClient = nil; pcJobID = nil; refreshBusy()
+        }
+        refreshBusy()
+    }
     func handleMemoryPressure() {
         let oldEngine = engine
         cancel(); result = nil; drawing = nil; lastPreview = nil; debugImage = nil; agreement = nil
+        pcImage = nil
         fullResolutionVerified = false; processedParameters = nil; exportURL = nil
         Task { await oldEngine?.clear() }
         status = "Hukommelsen er presset · behandling afbrudt"
@@ -300,8 +386,8 @@ final class WorkspaceModel: ObservableObject {
         }
     }
     private func refreshBusy() {
-        let busy = importWorker != nil || nativeWorker != nil || previewWorker != nil || pendingPreview != nil || refinementTask != nil || subjectWorker != nil
-        let visible = importWorker != nil || nativeWorker != nil || subjectWorker != nil
+        let busy = pcTask != nil || importWorker != nil || nativeWorker != nil || previewWorker != nil || pendingPreview != nil || refinementTask != nil || subjectWorker != nil
+        let visible = pcTask != nil || importWorker != nil || nativeWorker != nil || subjectWorker != nil
         if isBusy != busy { isBusy = busy }
         if showsProgress != visible { showsProgress = visible }
     }

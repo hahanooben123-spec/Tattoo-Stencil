@@ -15,6 +15,7 @@ struct WorkspaceView: View {
     @State private var preset = Preset.portrait
     @State private var choosingSubject = false
     @State private var showAdvanced = false
+    @State private var showPCPairing = false
 
     var body: some View {
         NavigationSplitView {
@@ -27,29 +28,40 @@ struct WorkspaceView: View {
                         Button(choosingSubject ? "Annuller motivvalg" : "Vælg hovedmotiv") {
                             choosingSubject.toggle()
                             comparison = choosingSubject ? 1 : 0
-                        }.disabled(model.isBusy || !model.subjectEnabled)
+                        }.disabled(model.isBusy || !model.subjectEnabled || model.pcMode)
                         Text(model.subjectStatus).font(.caption).foregroundStyle(.secondary)
                     }
                 }
                 Section("Stencil") {
+                    Button(model.pcPairing == nil ? "Forbind PC" : "PC-forbindelse") { showPCPairing = true }
+                        .disabled(model.isBusy)
+                    if model.pcPairing != nil {
+                        Button("Dan stencil på PC") { choosingSubject = false; comparison = 0; model.generateOnPC() }
+                            .disabled(model.imported == nil || model.isBusy)
+                    }
+                    if model.pcMode {
+                        Text("Lokal AI på PC · sort stencil på hvid baggrund").font(.caption)
+                        Button("Brug lokal filtermotor") { model.useLocalEngine() }.disabled(model.isBusy)
+                    } else {
                     floatSlider("Detaljer", value: $model.controls.detail, range: 0...1)
                     floatSlider("Hovedkontur", value: $model.controls.outlineEmphasis, range: 0...1)
                     floatSlider("Skygger", value: $model.controls.shadows, range: 0...1)
                     Text("Tydelig hovedkontur, fine detaljer og diskrete skyggelinjer.")
                         .font(.caption).foregroundStyle(.secondary)
+                    }
                 }
                 Section("Eksport") {
                     Picker("Format", selection: $model.exportFormat) { ForEach(ExportFormat.allCases, id: \.self) { Text($0.rawValue).tag($0) } }
                     HStack { Text("Bredde · mm"); TextField("Bredde", value: $model.widthMM, format: .number).keyboardType(.decimalPad).multilineTextAlignment(.trailing) }
                     Text(String(format: "Højde: %.1f mm", model.heightMM)).font(.caption)
-                    Button("Kontrollér endelig stencil") { model.verifyFullResolution() }.disabled(model.imported == nil || model.isBusy)
+                    Button("Kontrollér endelig stencil") { model.verifyFullResolution() }.disabled(model.imported == nil || model.isBusy || (model.pcMode && model.pcImage == nil))
                     Button("Eksportér stencil") { model.export() }
-                        .disabled(model.imported == nil || model.isBusy || !model.widthMM.isFinite || !(10...2000).contains(model.widthMM))
+                        .disabled(model.imported == nil || model.isBusy || (model.pcMode && model.pcImage == nil) || !model.widthMM.isFinite || !(10...2000).contains(model.widthMM))
                     if let url = model.exportURL { ShareLink(item: url) { Label("Gem eller del", systemImage: "square.and.arrow.up") } }
                     Text("Print ved 100 % / faktisk størrelse. Kontrollér målet med en lineal.").font(.caption).foregroundStyle(.secondary)
                 }
                 Section {
-                    DisclosureGroup("Avanceret",isExpanded: $showAdvanced) { advancedControls }
+                    if !model.pcMode { DisclosureGroup("Avanceret",isExpanded: $showAdvanced) { advancedControls } }
                 }
             }
             .navigationTitle("Stencil Studio")
@@ -92,6 +104,7 @@ struct WorkspaceView: View {
             }
             .navigationTitle("Workspace")
         }
+        .sheet(isPresented:$showPCPairing) { PCPairingView(model:model) }
         .fileImporter(isPresented: $showFiles, allowedContentTypes: [.image]) { result in
             do {
                 let url = try result.get()
@@ -133,7 +146,9 @@ struct WorkspaceView: View {
         GeometryReader { geometry in
             ZStack(alignment: .leading) {
                 Color.white
-                if let debug = model.debugImage {
+                if let raster = model.pcImage {
+                    Image(decorative:raster,scale:1).resizable().interpolation(.none)
+                } else if let debug = model.debugImage {
                     Image(decorative: debug, scale: 1).resizable().interpolation(.none)
                 } else if let drawing = model.drawing {
                     Canvas(rendersAsynchronously: true) { context, size in

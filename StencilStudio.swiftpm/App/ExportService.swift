@@ -6,6 +6,26 @@ import StencilCore
 enum ExportFormat: String, CaseIterable { case png = "PNG", pdf = "PDF" }
 
 enum ExportService {
+    static func exportRaster(_ image: CGImage, widthMM: Double, format: ExportFormat) throws -> URL {
+        guard widthMM.isFinite, (10...2000).contains(widthMM) else { throw StencilError.invalidParameters }
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("StencilExports",isDirectory:true)
+        try FileManager.default.createDirectory(at:folder,withIntermediateDirectories:true)
+        let url = folder.appendingPathComponent("PC-Stencil-\(UUID().uuidString).\(format == .png ? "png" : "pdf")")
+        if format == .png {
+            guard let destination = CGImageDestinationCreateWithURL(url as CFURL,UTType.png.identifier as CFString,1,nil) else { throw ImportError.allocation }
+            let dpi = Double(image.width)/widthMM*25.4
+            CGImageDestinationAddImage(destination,image,[kCGImagePropertyDPIWidth:dpi,kCGImagePropertyDPIHeight:dpi] as CFDictionary)
+            guard CGImageDestinationFinalize(destination) else { throw ImportError.allocation }
+        } else {
+            let width = widthMM/25.4*72
+            let rect = CGRect(x:0,y:0,width:width,height:width*Double(image.height)/Double(image.width))
+            try UIGraphicsPDFRenderer(bounds:rect).writePDF(to:url) { context in
+                context.beginPage()
+                UIImage(cgImage:image).draw(in:rect)
+            }
+        }
+        return url
+    }
     static func export(_ result: StencilResult, styles: [LayerKind: LayerStyle], parameters: Parameters,
                        widthMM: Double, transparent: Bool, format: ExportFormat) throws -> URL {
         guard widthMM.isFinite, widthMM >= 10, widthMM <= 2000 else { throw StencilError.invalidParameters }
