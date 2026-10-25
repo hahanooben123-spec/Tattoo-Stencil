@@ -11,3 +11,4 @@ Research/StencilModels/__pycache__/
 LocalStencilServer/__pycache__/
 LocalStencilServer/tests/__pycache__/
 .pytest_cache/
+LocalAIPrototype/*.xcodeproj/

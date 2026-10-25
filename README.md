@@ -1,6 +1,12 @@
 # Stencil Studio — offline stencil engine and iPad workspace
 
-An offline iPadOS 17+ tattoo stencil prototype. The stencil engine uses deterministic traditional computer vision. With the user's revised requirements, **Apple Vision's on-device foreground model** now optionally guides subject selection; there is no generative AI, cloud processing, image upload, external model download code or third-party runtime dependency. Processing preserves the reference coordinate system and produces **paths**, not black shadow fills.
+This repository contains three experimental tattoo-stencil paths:
+
+- **`StencilStudio.swiftpm`**: the existing iPad/iPhone workspace, usable in Swift Playgrounds. Its on-device filter engine uses traditional computer vision plus optional Apple Vision. It can also send an explicit generation request to the paired private PC server.
+- **[LocalStencilServer](LocalStencilServer/README.md)**: FLUX.2 klein 4B running on your NVIDIA PC, connected to the workspace over authenticated private HTTPS.
+- **[LocalAIPrototype](LocalAIPrototype/README.md)**: a separate native iPad app that embeds the local Draw Things inference runtime and downloads the compressed model once. It targets an M2/8 GB iPad experiment. It requires a native build/sign/install; the C/C++ inference engine cannot simply be added to the existing iPad Swift Playgrounds project. Compilation, installation and actual on-device generation are separate validation steps.
+
+The existing workspace's filter engine preserves reference coordinates and produces paths. Generative results are raster images and may alter source anatomy. Neither path is professionally validated.
 
 This is a development build, not a professionally validated tattoo tool. The artist must inspect every line before transfer.
 

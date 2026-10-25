@@ -13,8 +13,8 @@ targets:
     platform: iOS
     sources:
       - Sources
-    resources:
       - path: Resources
+        buildPhase: resources
     dependencies:
       - package: MediaGenerationKit
         product: MediaGenerationKit
@@ -36,14 +36,4 @@ targets:
         SWIFT_OPTIMIZATION_LEVEL: '-O'
     scheme:
       gatherCoverageData: false
-      testTargets: [StencilLocalAITests]
-  StencilLocalAITests:
-    type: bundle.unit-test
-    platform: iOS
-    sources: [Tests]
-    dependencies:
-      - target: StencilLocalAI
-    settings:
-      base:
-        GENERATE_INFOPLIST_FILE: YES
-        SWIFT_VERSION: '5.0'
+      testTargets: []

@@ -1,6 +1,8 @@
 import XCTest
 import UIKit
-@testable import StencilLocalAI
+import ImageIO
+import UniformTypeIdentifiers
+@testable import StencilImageTools
 
 final class LocalAIImageTests: XCTestCase {
     func image(width: Int,height: Int) -> UIImage {
@@ -28,5 +30,19 @@ final class LocalAIImageTests: XCTestCase {
         XCTAssertLessThanOrEqual(input.reference.height,768)
         XCTAssertEqual(input.canvasWidth%64,0); XCTAssertEqual(input.canvasHeight%64,0)
         XCTAssertThrowsError(try LocalAIImages.prepare(Data("not an image".utf8)))
+    }
+    func testExifRotationIsAppliedBeforePaddingAndComparison() throws {
+        let data = NSMutableData()
+        let destination = try XCTUnwrap(CGImageDestinationCreateWithData(data,UTType.jpeg.identifier as CFString,1,nil))
+        let raw = try XCTUnwrap(image(width:80,height:120).cgImage)
+        CGImageDestinationAddImage(destination,raw,[kCGImagePropertyOrientation:6] as CFDictionary)
+        XCTAssertTrue(CGImageDestinationFinalize(destination))
+        let input = try LocalAIImages.prepare(data as Data)
+        XCTAssertEqual(input.reference.width,120)
+        XCTAssertEqual(input.reference.height,80)
+        let output = try LocalAIImages.binary(input.reference,crop:CGRect(x:0,y:0,width:120,height:80))
+        let bytes = try XCTUnwrap(output.dataProvider?.data) as Data
+        XCTAssertEqual(bytes[20*output.bytesPerRow+100],0)
+        XCTAssertEqual(bytes[60*output.bytesPerRow+20],255)
     }
 }

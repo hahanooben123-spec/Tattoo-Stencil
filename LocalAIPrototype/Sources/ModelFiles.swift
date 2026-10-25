@@ -56,7 +56,13 @@ enum ModelFiles {
                 digest.update(data:chunk)
             }
             let hash = digest.finalize().map { String(format:"%02x",$0) }.joined()
-            guard hash == hashes[file] else { throw LocalAIError.checksum(file) }
+            guard hash == hashes[file] else {
+                // Only this app's known model-cache file is removed, so the next
+                // explicit install can repair it instead of reusing a corrupt file.
+                try? FileManager.default.removeItem(at:url)
+                try? FileManager.default.removeItem(at:root.appendingPathComponent("verified-model.json"))
+                throw LocalAIError.checksum(file)
+            }
             let attributes = try FileManager.default.attributesOfItem(atPath:url.path)
             guard let size = attributes[.size] as? NSNumber, let date = attributes[.modificationDate] as? Date else {
                 throw LocalAIError.checksum(file)

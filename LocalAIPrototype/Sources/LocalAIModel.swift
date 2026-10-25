@@ -20,9 +20,13 @@ final class LocalAIModel: ObservableObject {
     private let engine = LocalAIEngine()
     private var work: Task<Void,Never>?
     private var meter: Task<Void,Never>?
+    private var operationID = UUID()
 
     func refreshInstallation() async {
-        do { installed = try await engine.isInstalled() }
+        do {
+            installed = try await engine.isInstalled()
+            if installed { status = "Model klar · vælg reference og dan stencil på iPad" }
+        }
         catch { self.error = error.localizedDescription }
     }
     func select(_ data: Data) {
@@ -44,6 +48,8 @@ final class LocalAIModel: ObservableObject {
     private func run(_ operation: @escaping @Sendable (LocalAIEngine,@escaping @Sendable (Double,String)->Void) async throws -> LocalAIOutput?) {
         guard !busy else { return }
         busy = true; cancelling = false; error = nil; progress = 0; peakMB = 0
+        operationID = UUID()
+        let id = operationID
         // UIKit backgrounding can suspend compute; keep the display awake only while processing.
         UIApplication.shared.isIdleTimerDisabled = true
         meter = Task {
@@ -61,7 +67,7 @@ final class LocalAIModel: ObservableObject {
             do {
                 let result = try await operation(engine) { [weak self] value,message in
                     Task { @MainActor in
-                        guard let self, self.busy, !self.cancelling else { return }
+                        guard let self, self.busy, !self.cancelling, self.operationID == id else { return }
                         self.progress = value; self.status = message
                     }
                 }
@@ -73,6 +79,7 @@ final class LocalAIModel: ObservableObject {
                 } else { status = "Model klar · vælg reference og dan stencil på iPad" }
                 progress = 1
             } catch {
+                installed = (try? await engine.isInstalled()) ?? false
                 if error is CancellationError || Task.isCancelled { status = "Afbrudt" }
                 else { self.error = error.localizedDescription; status = "Behandlingen kunne ikke afsluttes" }
             }

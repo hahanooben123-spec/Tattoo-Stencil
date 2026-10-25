@@ -5,6 +5,18 @@ on:
   pull_request:
     paths: ['LocalAIPrototype/**', '.github/workflows/local-ai-ipad.yml']
 jobs:
+  image-geometry:
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test image geometry and black pixels on iOS Simulator
+        run: |
+          brew install xcodegen
+          xcodegen generate --spec LocalAIPrototype/image-tests.yml
+          device=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(x["udid"] for a in d["devices"].values() for x in a if "iPad" in x["name"]))')
+          xcodebuild -project LocalAIPrototype/StencilImageChecks.xcodeproj -scheme StencilImageChecks \
+            -destination "platform=iOS Simulator,id=$device" CODE_SIGNING_ALLOWED=NO test
   build:
     runs-on: macos-15
     timeout-minutes: 60
@@ -14,10 +26,11 @@ jobs:
         run: |
           brew install xcodegen
           xcodegen generate --spec LocalAIPrototype/project.yml
-      - uses: actions/cache@v4
+      - uses: actions/cache/restore@v4
         with:
-          path: .build/local-ai/SourcePackages
-          key: ipad-ai-packages-${{ runner.os }}-8868a968
+          path: .build/local-ai
+          key: ipad-ai-${{ runner.os }}-8868a968-${{ github.sha }}
+          restore-keys: ipad-ai-${{ runner.os }}-8868a968-
       - name: Build real local engine for iPad
         run: |
           set -o pipefail
@@ -34,6 +47,11 @@ jobs:
           cp -R .build/local-ai/Build/Products/Release-iphoneos/StencilLocalAI.app .build/local-ai-package/Payload/
           cd .build/local-ai-package
           ditto -c -k --sequesterRsrc --keepParent Payload StencilLocalAI-unsigned.ipa
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: .build/local-ai
+          key: ipad-ai-${{ runner.os }}-8868a968-${{ github.sha }}
       - uses: actions/upload-artifact@v4
         if: always()
         with:

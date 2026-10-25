@@ -1,0 +1,16 @@
+Stencil Lokal AI prototype
+
+Uses MediaGenerationKit by Draw Things, under LGPL-3.0.
+https://github.com/drawthingsai/media-generation-kit
+Pinned revision: 8868a9685d9c299816f43ef53efd455ffca437f0
+Underlying Draw Things Community revision: d473a2f148b3e7dc9b90d0b7cfccc5cda999eb66
+Library source has not been modified.
+
+Application source and rebuild instructions:
+https://github.com/hahanooben123-spec/Tattoo-Stencil/tree/main/LocalAIPrototype
+The XcodeGen project specification pins the library and permits rebuilding
+with a modified library. License texts accompany this notice.
+
+Model weights are separate downloads:
+FLUX.2 klein 4B, Black Forest Labs, Apache-2.0.
+Qwen3-4B text encoder, Qwen/Alibaba, Apache-2.0.
