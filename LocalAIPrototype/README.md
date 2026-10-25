@@ -8,11 +8,11 @@ Standalone native iPad app to test **FLUX.2 klein 4B on an iPad Pro M2 with 8 GB
 
 The existing `StencilStudio.swiftpm` stays usable separately. This prototype uses Draw Things' native C/C++ inference stack through MediaGenerationKit; it is **not** a new `.swiftpm` file to open/run directly in Swift Playgrounds on iPad. It must be built and installed as a native app using Apple's tooling and signing. No signed installation or TestFlight upload is included.
 
-The repository's **Local AI iPad prototype** GitHub Actions workflow builds the real iOS dependency and produces a build log plus an **unsigned** IPA when compilation succeeds. An unsigned IPA cannot be installed merely by opening it on the iPad. It must be signed for your device. A Mac/Xcode development install is the direct supported developer route. A Windows signing/sideloading workflow is a separate installation step requiring the user's own Apple account and device; no credentials are requested or stored here.
+The repository's **Local AI iPad prototype** GitHub Actions workflow builds the real iOS dependency and produces a build log plus an IPA requiring device signing when compilation succeeds. This IPA cannot be installed merely by opening it on the iPad. It carries an ad-hoc signature only so a subsequent signer can read the requested memory entitlement; it is not signed/provisioned for your iPad. The entitlement file also accompanies the artifact. A Mac/Xcode development install is the direct supported developer route. A Windows signing/sideloading workflow is a separate installation step requiring the user's own Apple account and device; no credentials are requested or stored here. Preserve the requested memory entitlement during signing and verify it on the installed app; packaging alone does not grant it.
 
 ## Build on a Mac
 
-Install Xcode and XcodeGen, then from the repository root:
+Install Xcode 26 or newer (the pinned runtime references the Apple 10 GPU family, even when targeting older iPads) and XcodeGen, then from the repository root:
 
 ```sh
 xcodegen generate --spec LocalAIPrototype/project.yml

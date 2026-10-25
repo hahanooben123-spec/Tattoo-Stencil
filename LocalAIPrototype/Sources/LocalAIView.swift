@@ -2,6 +2,7 @@ import SwiftUI
 import PhotosUI
 import UniformTypeIdentifiers
 
+@MainActor
 struct LocalAIView: View {
     @StateObject private var model = LocalAIModel()
     @State private var photo: PhotosPickerItem?

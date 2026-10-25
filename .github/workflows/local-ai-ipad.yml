@@ -22,8 +22,12 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
       - name: Prepare Xcode project
         run: |
+          xcodebuild -version
           brew install xcodegen
           xcodegen generate --spec LocalAIPrototype/project.yml
       - uses: actions/cache/restore@v4
@@ -45,8 +49,13 @@ jobs:
         run: |
           mkdir -p .build/local-ai-package/Payload
           cp -R .build/local-ai/Build/Products/Release-iphoneos/StencilLocalAI.app .build/local-ai-package/Payload/
+          # Carry the requested memory entitlement for a later device signer.
+          # This ad-hoc signature is not an installable provisioning signature.
+          codesign --force --sign - --timestamp=none --entitlements LocalAIPrototype/LocalAI.entitlements \
+            .build/local-ai-package/Payload/StencilLocalAI.app
+          cp LocalAIPrototype/LocalAI.entitlements .build/local-ai-package/
           cd .build/local-ai-package
-          ditto -c -k --sequesterRsrc --keepParent Payload StencilLocalAI-unsigned.ipa
+          ditto -c -k --sequesterRsrc --keepParent Payload StencilLocalAI-device-signing-required.ipa
       - uses: actions/cache/save@v4
         if: always()
         with:
@@ -58,5 +67,7 @@ jobs:
           name: local-ai-ipad-build
           path: |
             .build/local-ai-build.log
-            .build/local-ai-package/StencilLocalAI-unsigned.ipa
+            .build/local-ai-package/StencilLocalAI-device-signing-required.ipa
+            .build/local-ai-package/LocalAI.entitlements
+          include-hidden-files: true
           retention-days: 14
