@@ -29,15 +29,18 @@ def load_image(path: Path, mode: str) -> Image.Image:
         return image.convert(mode)
 
 
-def validate(manifest: Path, allow_synthetic: bool = False) -> tuple[list[dict], dict]:
+def validate(manifest: Path, allow_synthetic: bool = False, allow_provisional: bool = False) -> tuple[list[dict], dict]:
     content = json.loads(manifest.read_text(encoding="utf-8"))
     if content.get("version") != 1 or not isinstance(content.get("pairs"), list):
         raise ValueError("Expected version 1 and a pairs list")
     pairs, errors, warnings = [], [], []
     groups, fingerprints, names = {}, {}, set()
     synthetic = content.get("scope") == "synthetic-smoke-only"
+    provisional = content.get("scope") == "provisional-registered-collages"
     if synthetic and not allow_synthetic:
         errors.append("Synthetic data is only allowed in an explicit smoke run")
+    if provisional and not allow_provisional:
+        errors.append("Provisional collage registration requires explicit experimental opt-in")
     for item in content["pairs"]:
         if not isinstance(item, dict):
             errors.append("Every pair must be an object")
@@ -52,9 +55,15 @@ def validate(manifest: Path, allow_synthetic: bool = False) -> tuple[list[dict],
         split, group = item.get("split"), item.get("group")
         if split not in {"train", "validation", "test"} or not isinstance(group, str) or not group:
             problems.append("requires train/validation/test split and composition-family group")
-        if item.get("aligned") is not True:
+        estimated = (provisional and allow_provisional and item.get("targetProvidedAsExample") is True
+                     and isinstance(item.get("alignmentEstimate"), dict)
+                     and item["alignmentEstimate"].get("method") == "reviewed-similarity"
+                     and item["alignmentEstimate"].get("reviewed") is True)
+        if provisional and not estimated:
+            problems.append("provisional pairs require a reviewed registration and an example target")
+        if item.get("aligned") is not True and not estimated:
             problems.append("source and available target layers are not confirmed aligned")
-        if item.get("artistApproved") is not True and not synthetic:
+        if item.get("artistApproved") is not True and not synthetic and not estimated:
             problems.append("target has not been approved by the artist")
         files = {}
         for key in ("source", "structure", "guides"):
@@ -114,6 +123,8 @@ def validate(manifest: Path, allow_synthetic: bool = False) -> tuple[list[dict],
     if not any(item.get("split") == "test" for item in pairs):
         warnings.append("No held-out test set: cannot claim generalization")
     report = {"ready": not errors, "scope": content.get("scope", "artist-pairs"),
+              "provisionalAlignment": provisional,
+              "qualityEligible": not (synthetic or provisional),
               "pairCount": len(pairs), "errors": errors, "warnings": warnings,
               "splits": {s: sum(p.get("split") == s for p in pairs) for s in ("train", "validation", "test")},
               "pairs": [{"name": p.get("name"), "group": p.get("group"), "split": p.get("split"),

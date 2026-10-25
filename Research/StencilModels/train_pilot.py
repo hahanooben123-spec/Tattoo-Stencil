@@ -189,13 +189,16 @@ def main():
     parser.add_argument("--patch-size", type=int, default=256)
     parser.add_argument("--threads", type=int, default=4)
     parser.add_argument("--seed", type=int, default=73)
+    parser.add_argument("--adaptation", choices=("full", "head-only"), default="full")
     parser.add_argument("--synthetic-smoke", action="store_true")
+    parser.add_argument("--provisional-pairs", action="store_true",
+                        help="Noisy-label experiment only; not exact registration or quality validation")
     parser.add_argument("--check-only", action="store_true")
     args = parser.parse_args()
     if not (1 <= args.steps <= 2000 and 64 <= args.patch_size <= 512 and args.patch_size % 8 == 0
             and 1 <= args.threads <= 16):
         parser.error("steps: 1..2000; patch-size: multiple of 8 in 64..512; threads: 1..16")
-    pairs, readiness = validate(args.manifest, args.synthetic_smoke)
+    pairs, readiness = validate(args.manifest, args.synthetic_smoke, args.provisional_pairs)
     if args.output.exists():
         parser.error("Output directory already exists; use a new experiment name")
     args.output.mkdir(parents=True)
@@ -210,6 +213,8 @@ def main():
     torch.use_deterministic_algorithms(True)
     rng = random.Random(args.seed)
     model = model_from_assets(args.assets)
+    if args.adaptation == "head-only":
+        model.backbone.requires_grad_(False)
     validation = [p for p in pairs if p["split"] == "validation"]
     baseline = evaluate(model, validation, args.output / "baseline", args.patch_size)
     training = [(p, *tensors(p)) for p in pairs if p["split"] == "train"]
@@ -239,6 +244,9 @@ def main():
     torch.save(model.state_dict(), checkpoint)
     candidate = evaluate(model, validation, args.output / "candidate", args.patch_size)
     report = {"scope": readiness["scope"], "qualityAccepted": False,
+              "qualityEligible": readiness["qualityEligible"],
+              "adaptation": args.adaptation,
+              "trainableParameters": sum(p.numel() for p in model.parameters() if p.requires_grad),
               "statement": "Metrics are geometry diagnostics, not artist approval. Test set was not evaluated.",
               "seed": args.seed, "steps": args.steps, "patchSize": args.patch_size,
               "threads": args.threads, "learningRate": {"pretrained": 1e-5, "newGuideHead": 1e-4},

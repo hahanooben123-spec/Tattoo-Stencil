@@ -5,8 +5,10 @@ artist's quality target. This pilot moves the experiment to supervised stroke
 selection rather than further tuning those filters. It is a bounded research
 workflow, outside the iPad app. It is not a trained professional stencil model.
 
-The only training executed so far uses procedurally generated smoke images.
-**No user artwork or collage was used for training. No paid compute was used.**
+The initial training run used procedurally generated smoke images only.
+The subsequent [collage pilot](COLLAGE-PILOT.md) explicitly experiments with
+approximately registered user examples; it is ineligible for quality acceptance.
+No paid compute was used in either stage.
 
 ## What is implemented
 
@@ -33,6 +35,10 @@ and composition-family splits. Decoded identical sources in multiple splits are
 rejected even when their PNG encoding differs. Group labels must still account
 for crops, redraws, derivatives and repeated compositions; hashes cannot identify
 all such relationships automatically. A checked flag cannot prove alignment.
+The separate `--provisional-pairs` mode allows reviewed similarity estimates
+only for `provisional-registered-collages`. It preserves `aligned: false` and
+`artistApproved: false`, records `qualityEligible: false`, and must not be
+represented as exact, artist-approved pairs. Normal strict validation remains.
 
 Validation compares the pretrained baseline and candidate at a frozen threshold
 of 0.5 and a declared 1.5-native-pixel match tolerance. Precision, recall and F1

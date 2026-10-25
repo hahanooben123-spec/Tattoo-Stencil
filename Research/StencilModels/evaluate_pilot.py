@@ -18,6 +18,7 @@ def main():
     parser.add_argument("--assets", type=Path, default=DEFAULT_ASSETS)
     parser.add_argument("--split", choices=("validation", "test"), default="test")
     parser.add_argument("--synthetic-smoke", action="store_true")
+    parser.add_argument("--provisional-pairs", action="store_true")
     args = parser.parse_args()
     report = json.loads((args.experiment / "experiment.json").read_text(encoding="utf-8"))
     checkpoint = args.experiment / "candidate.pt"
@@ -25,7 +26,7 @@ def main():
         parser.error("Checkpoint or manifest changed since training; do not silently reuse test results")
     if digest(args.assets / "drawings/style1.pth") != report["baseWeightsSHA256"]:
         parser.error("Base weights differ from the training run")
-    pairs, readiness = validate(args.manifest, args.synthetic_smoke)
+    pairs, readiness = validate(args.manifest, args.synthetic_smoke, args.provisional_pairs)
     if not readiness["ready"]:
         parser.error("Pair validation failed: " + "; ".join(readiness["errors"]))
     training_data = json.loads((args.experiment / "data-readiness.json").read_text(encoding="utf-8"))
