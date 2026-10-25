@@ -45,7 +45,7 @@ def test_authorization_input_validation_and_complete_job():
         response = client.get("/v1/jobs/"+identifier+"/image",headers=AUTH)
         assert response.headers["Cache-Control"] == "no-store"
         output = Image.open(io.BytesIO(response.content)).convert("L")
-        assert set(output.getdata()) == {0,255}
+        assert set(output.get_flattened_data()) == {0,255}
         assert output.getpixel((2,2)) == 0
         assert client.delete("/v1/jobs/"+identifier,headers=AUTH).json()["status"] == "cancelled"
         assert client.get("/v1/jobs/"+identifier+"/image",headers=AUTH).status_code == 409
@@ -69,3 +69,4 @@ def test_transparency_and_pixel_limit():
     Image.new("RGBA",(64,64),(0,0,0,0)).save(stream,format="PNG")
     assert decode(stream.getvalue()).getpixel((0,0)) == (255,255,255)
     assert Image.open(io.BytesIO(binary_png(decode(stream.getvalue())))).mode == "1"
+

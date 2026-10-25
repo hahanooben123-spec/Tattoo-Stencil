@@ -16,9 +16,10 @@ struct WorkspaceView: View {
     @State private var choosingSubject = false
     @State private var showAdvanced = false
     @State private var showPCPairing = false
+    @State private var compactColumn: NavigationSplitViewColumn = .sidebar
 
     var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(preferredCompactColumn:$compactColumn) {
             Form {
                 Section("Reference") {
                     PhotosPicker(selection: $photo, matching: .images) { Label("Vælg billede", systemImage: "photo") }
@@ -65,6 +66,11 @@ struct WorkspaceView: View {
                 }
             }
             .navigationTitle("Stencil Studio")
+            .toolbar {
+                ToolbarItem(placement:.primaryAction) {
+                    Button("Vis stencil") { compactColumn = .detail }.disabled(model.imported == nil)
+                }
+            }
             .navigationSplitViewColumnWidth(min: 300, ideal: 340, max: 420)
         } detail: {
             VStack(spacing: 0) {
@@ -103,6 +109,11 @@ struct WorkspaceView: View {
                 }.padding()
             }
             .navigationTitle("Workspace")
+            .toolbar {
+                ToolbarItem(placement:.primaryAction) {
+                    Button("Indstillinger") { compactColumn = .sidebar }
+                }
+            }
         }
         .sheet(isPresented:$showPCPairing) { PCPairingView(model:model) }
         .fileImporter(isPresented: $showFiles, allowedContentTypes: [.image]) { result in
@@ -134,6 +145,7 @@ struct WorkspaceView: View {
         .onChange(of: model.widthMM) { _, _ in model.exportURL = nil }
         .onChange(of: model.transparent) { _, _ in model.exportURL = nil }
         .onChange(of: model.exportFormat) { _, _ in model.exportURL = nil }
+        .onChange(of: model.sourceSize) { _, _ in if model.imported != nil { compactColumn = .detail } }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
             model.handleMemoryPressure()
         }

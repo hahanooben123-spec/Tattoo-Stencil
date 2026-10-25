@@ -7,15 +7,7 @@ from pathlib import Path
 from PIL import Image, ImageOps
 from .download_model import DEFAULT_ROOT, MODEL_ID, REVISION
 
-PROMPT = """Convert this exact artwork into a professional tattoo transfer stencil.
-Preserve framing, proportions, expression, gaze and every object's placement.
-Keep both eyes readable: eyelid rims, iris and pupil boundaries and important lashes.
-Use thin smooth continuous black contours on pure white. Outline pupils, do not fill.
-Clearly separate overlapping forms, fingers, lips, nose, hair groups and ornaments.
-Select sparse short dashed guides for major shadow transitions only.
-Remove grayscale shading, solid shadow fills, texture, grain and redundant contours.
-Do not invent anatomy, redesign, mirror, crop, add text or change composition.
-Output one source-faithful stencil, no panels or captions."""
+PROMPT = """Make a precise tattoo transfer tracing of the input artwork. Preserve the entire original composition, proportions, eye positions and expression. Keep every existing design element in place, including any original lettering, jewelry and banknotes. Pure white paper, very thin black monoline outlines. Dark shapes are empty white shapes bounded by thin lines, including pupils, lashes and eyebrows. Trace visible eyelids, iris, pupil, lips, fingers and object overlaps accurately. Simplify hair into a few flowing strands. Add only a few short dashed guides for broad shadows. No black filled areas, no shading, no crosshatching, no gray, no texture, no signature. Do not redraw or beautify the subject. One sparse stencil only."""
 
 def decode(data: bytes) -> Image.Image:
     with Image.open(io.BytesIO(data)) as image:
@@ -28,7 +20,7 @@ def decode(data: bytes) -> Image.Image:
         return white.convert("RGB")
 
 def binary_png(image: Image.Image) -> bytes:
-    # Keep every printed mark opaque black. No gray shadow fills.
+    # Keep every printed mark opaque black; the model may still produce solid fills.
     image = image.convert("L").point(lambda p: 0 if p < 192 else 255, mode="1")
     buffer = io.BytesIO()
     image.save(buffer, format="PNG")
